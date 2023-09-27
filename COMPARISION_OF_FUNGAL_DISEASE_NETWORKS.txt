@@ -1,0 +1,2870 @@
+#COMPARISION of EARLY and LATE BLIGHT FUNGAL DISEASES in TOMATO 
+#MERGING OF DIFFERENT DATASETS, CONSTRUCTION AND COMPARSION OF FUNGAL DISEASE NETWORKS, AND IDENTIFICATION OF KEY GENES INVOLVED IN 
+###DIFFERRENTIAL HOST-PATHOGEN INTERACTIONS
+##PIPELINE CAN BE IMPLEMENTED TO NON-MODEL ORGANISM
+##Pathania S.
+sudo R
+setwd("/home/shivalika/Documents/EXPERIMENT_1")
+
+library(mclust)
+library(nor1mix)
+library(GEOquery)  #to use function getGEOSuppFiles
+library(stats)
+library(splines)
+library(preprocessCore)
+library(SparseM)
+library(quantreg)
+library(cqn)
+library(parallel)
+library(limma)
+library(edgeR)
+library(scales)
+library(Rsubread)
+library(BiocGenerics)
+library(AnnotationDbi)
+library(GenomicFeatures)
+library(GenomicRanges)
+library(Biobase)
+library(BiocParallel)
+library(genefilter) 
+library(methods) 
+library(locfit)
+library(geneplotter)
+library(ggplot2)
+library(Rcpp) 
+library(Hmisc)
+#library(DESeq2)
+library(curl)
+library(biomaRt)
+library(affy)
+library(bitops)
+library(rjson)
+library(RCurl)
+library(BiocManager)
+library(inSilicoDb)
+library(matrixStats)
+library(DWD)
+library(inSilicoMerging)
+library("frma")
+library(gcrma)
+library(RcppArmadillo)
+library(DESeq2)
+library(GenomeInfoDb)
+library(S4Vectors)
+library(IRanges)
+library(dynamicTreeCut)
+library(fastcluster)
+library(stats4)
+library(grDevices)
+library(utils)
+library(impute)
+library(foreach)
+library(iterators)
+library(doParallel)
+library(survival)
+library(GO.db)
+#library(robust)
+library(amap)
+library(moments)
+library(WGCNA)
+library(gplots)
+library(RColorBrewer)
+
+
+##STEP1. FETCHING DATASET DIRECTLY IN R
+
+library(GEOquery)  #to use function getGEOSuppFiles
+#######B. TOMATO VS ALTERNARI SOLANI########################################################
+getGEOSuppFiles("GSE75923")
+setwd("/home/shivalika/Documents/EXPERIMENT_1/GSE75923/")
+list.files()
+
+###DATA1
+system("tar -xvf GSE75923_RAW.tar")
+#GSM1970279_pusa_ruby_control1.txt.gz
+#GSM1970280_pusa_ruby_infected1.txt.gz
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/GSE75923/GSM1970279_pusa_ruby_control1.txt.gz")
+system("gunzip -k GSM1970279_pusa_ruby_control1.txt.gz")
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/GSE75923/GSM1970280_pusa_ruby_infected1.txt.gz")
+system("gunzip -k GSM1970280_pusa_ruby_infected1.txt.gz")
+#system("awk -v OFS='\t' 'NR==FNR {a[$1] = $2; next} {print $1,$2,a[$1]}' GSM1970280_pusa_ruby_infected1.txt GSM1970279_pusa_ruby_control1.txt | sed 's/\r//g' >GSE75923_CTR_INF.txt")
+system("awk -v OFS='\t' 'NR==FNR {a[$1] = $2; next} {print $1,$2,a[$1]}' GSM1970280_pusa_ruby_infected1.txt GSM1970279_pusa_ruby_control1.txt | sed 's/\r//g' | awk 'NR == 1; NR > 1 {print $0 | \"sort -r -k 1\"}' >GSE75923_CTR_INF.txt") #sorted
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/GSE75923/")
+system("awk -v OFS='\t' 'NR==FNR {a[$1] = $2; next} {print $1,$2,a[$1]}' GSM1970280_pusa_ruby_infected1.txt GSM1970279_pusa_ruby_control1.txt | sed 's/\r//g' | awk 'NR == 1; NR > 1 {print $0 | \"sort -r -k 1\"}' | wc")
+  23524   70572  547914
+
+
+###to find gene length from start and end position of gene
+#awk -F','  '{print $1"\t"($3-$2)+1}' mart_export.txt |  sed 's/\.[0-9]//g' | sed '1iGene ID\tLength' |  awk 'NR == 1; NR > 1 {print $0 | "sort -r -k 1"}' >kk_nw
+system("awk -F','  '{print $1\"\t\"($3-$2)+1}' mart_export.txt |  sed 's/\\.[0-9]//g' | sed '1iGene ID\tLength' |  awk 'NR == 1; NR > 1 {print $0 | \"sort -r -k 1\"}' >GSE75923_gene_length")
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/GSE75923/")
+system("awk -F','  '{print $1\"\t\"($3-$2)+1}' mart_export.txt |  sed 's/\\.[0-9]//g' | sed '1iGene ID\tLength' |  awk 'NR == 1; NR > 1 {print $0 | \"sort -r -k 1\"}' | wc")
+
+
+###COmine two files count file and gene length file
+system("awk 'NR==FNR{a[$1]=$2; next} ($1 in a) {print $0\"\t\"a[$1]}' GSE75923_gene_length GSE75923_CTR_INF.txt | sed '1iGene ID\tRaw_Read_Count_Control_1\tRaw_Read_Count_Infected_1\tLength' >FINAL_INPUT_FILE.txt")
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/GSE75923/")
+  23288   93153  656515  #loss of 236 entries
+#system("cat Solanum_lycopersicum.SL2.50.38.gtf | awk -F\"\t\" '{if($3==\"gene\") {split($9,a,\";\"); print a[1]\"\t\"$5-$4};}' | sed 's/[gene_id |\"|]//g' | sed 's/\\.[0-9]//g' | sed '1iGene ID\tLength' | awk 'NR == 1; NR > 1 {print $0 | \"sort -r -k 1\"}' >GSE75923_gene_length_nw") 
+
+####################USE READ LENGTH TOCALCULATE EXPRESION MATRIX IN R USING EdgeR####################################################################################################
+#GSE75923 expression data have paired end raw reads
+#source("http://bioconductor.org/biocLite.R")
+#biocLite("biomaRt")
+library(biomaRt)
+library(GenomicFeatures)
+listMarts(host="www.ensembl.org")
+               biomart               version
+#1 ENSEMBL_MART_ENSEMBL      Ensembl Genes 91
+#2   ENSEMBL_MART_MOUSE      Mouse strains 91txdb <- makeTranscriptDbFromGFF("Solanum_lycopersicum.SL2.50.38.gtf", format = "gff3")
+#3     ENSEMBL_MART_SNP  Ensembl Variation 91
+#4 ENSEMBL_MART_FUNCGEN Ensembl Regulation 91
+
+listMarts(host="plants.ensembl.org")
+ #           biomart                      version
+
+#1       plants_mart      Ensembl Plants Genes 38
+#2 plants_variations Ensembl Plants Variations 38
+
+ensembl<-listDatasets(useMart(biomart="plants_mart", host="plants.ensembl.org"))
+#head(listDatasets(useMart(biomart="plants_mart", host="plants.ensembl.org")))
+head(ensembl)
+ensembl
+ensembl$dataset
+sink("ENSEMBLPLANT_DATASET.txt")
+write.table(ensembl)
+sink()
+#file.show("ENSEMBLPLANT_DATASET.txt")
+closeAllConnections()
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/GSE75923/")
+################################################################################################################################
+#Count gene length from database
+################################################################################################################################
+sol_lyc_db <- makeTranscriptDbFromBiomart(biomart="plants_mart", dataset="slycopersicum_eg_gene", host="plants.ensembl.org")   #https://support.bioconductor.org/p/100772/
+sol_lyc_exonic <- exonsBy(sol_lyc_db, by="gene")                                                                               #https://support.bioconductor.org/p/99142/
+sol_lyc_exonic
+#sol_lyc_exonic_nw<-trim(sol_lyc_exonic)
+sol_lyc_red.exonic <- reduce(sol_lyc_exonic)
+sol_lyc_red.exonic
+sol_lyc_exon.lengths <- sum(width(sol_lyc_red.exonic))
+write.table(sol_lyc_exon.lengths, file="SOLANUM_LYCOPERSICUM_EXON_LENGTH", quote=FALSE, row.names=TRUE, col.names= F, sep="\t")
+
+############################################################################################################################
+#Count length from GTF/GFF file
+############################################################################################################################
+#https://support.bioconductor.org/p/100772/
+system("wget ftp://ftp.ensemblgenomes.org/pub/plants/release-38/gtf/solanum_lycopersicum/Solanum_lycopersicum.SL2.50.38.gtf.gz")
+system("gunzip -k Solanum_lycopersicum.SL2.50.38.gtf.gz")
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/GSE75923/")
+sol_lyc_gff <- makeTranscriptDbFromGFF("Solanum_lycopersicum.SL2.50.38.gtf", format="gtf")                        #https://support.bioconductor.org/p/99142/
+sol_lyc_gff
+
+#TxDb object:
+#| Db type: TxDb
+#| Supporting package: GenomicFeatures
+#| Data source: Solanum_lycopersicum.SL2.50.38.gtf
+#| Organism: NA
+#| miRBase build ID: NA
+#| transcript_nrow: 35216
+#| exon_nrow: 158905
+#| cds_nrow: 154754
+#| Db created by: GenomicFeatures package from Bioconductor
+#| Creation time: 2018-03-22 10:19:57 +0500 (Thu, 22 Mar 2018)
+#| GenomicFeatures version at creation time: 1.18.7
+#| RSQLite version at creation time: 2.0
+#| DBSCHEMAVERSION: 1.0
+sol_lyc_gff_exonic <- exonsBy(sol_lyc_gff, by="gene")                                                                             #https://support.bioconductor.org/p/99142/
+sol_lyc_gff_exonic
+sol_lyc_gff_red.exonic <- reduce(sol_lyc_gff_exonic)
+sol_lyc_gff_red.exonic
+sol_lyc_gff_exon.lengths <- sum(width(sol_lyc_gff_red.exonic))
+sol_lyc_gff_exon.lengths
+write.table(sol_lyc_gff_exon.lengths, file="SOLANUM_LYCOPERSICUM_EXON_LENGTH_GTF", quote=FALSE, row.names=TRUE, col.names= F, sep="\t")
+
+
+############################################################################################################################
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/GSE75923/")
+system("sort -r -k 1 SOLANUM_LYCOPERSICUM_EXON_LENGTH | sed 's/\\.[0-9]//g' | sed '1iensembl_gene_id\tLength' >FINAL_SOLANUM_LYCOPERSICUM_EXON_LENGTH")
+system("awk 'NR==FNR{a[$1]=$2; next} ($1 in a) {print $0\"\t\"a[$1]}' FINAL_SOLANUM_LYCOPERSICUM_EXON_LENGTH GSE75923_CTR_INF.txt >FINAL_INPUT_FILE_nw.txt")
+x_nw<-read.table("FINAL_INPUT_FILE_nw.txt", header=T, sep="\t")
+x_nw
+dim(x_nw)  #[1] 23287     4
+head(x_nw)
+ # ensembl_gene_id Raw_Read_Count_Control_1 Raw_Read_Count_Infected_1 Length
+#1  Solyc12g100360                     7050                      7348   6315
+#2  Solyc12g100350                       88                       109    138
+#3  Solyc12g100330                     1290                       962   2802
+#4  Solyc12g100320                      832                       821    846
+#5  Solyc12g100310                     5038                      4031   1809
+#6  Solyc12g100290                      554                       639   1305
+class(x_nw)  #[1] "data.frame"
+
+s_nw<-x_nw[,-2]
+ #  ensembl_gene_id Raw_Read_Count_Infected_1 Length
+ #1  Solyc12g100360                      7348   6315
+ #2  Solyc12g100350                       109    138
+ #3  Solyc12g100330                       962   2802
+ #4  Solyc12g100320                       821    846
+ #5  Solyc12g100310                      4031   1809
+ #6  Solyc12g100290                       639   1305
+
+a_nw<-rownames<-s_nw[,1] 
+class(a_nw)#[1] "factor"
+y_nw<-s_nw[,-1]
+y_nw
+class(y_nw)  #[1] "data.frame"
+head(y_nw)
+ # Raw_Read_Count_Infected_1 Length
+#1                      7348   6315
+#2                       109    138
+#3                       962   2802
+#4                       821    846
+#5                      4031   1809
+#6                       639   1305
+
+names(x_nw)    #display header
+#[1] "ensembl_gene_id"           "Raw_Read_Count_Control_1" 
+#[3] "Raw_Read_Count_Infected_1" "Length"                   
+names(y_nw)
+#[1] "Raw_Read_Count_Infected_1" "Length"
+b_nw<-colnames<- names(y_nw)
+b_nw
+#z<-y[-1,]
+z_nw<-y_nw[,-2]
+names(z_nw)
+
+###########METHOD I to calculate RPKM############################
+library(edgeR)
+myDGEList <- DGEList(counts=z_nw , genes=x_nw$Length)   #where  the "x_nw$Length" is a data.frame with a collum called "lenght" which contains the gene lengths corresponding to each row in the expression matrix.                              https://support.bioconductor.org/p/99142/
+myDGEList
+myDGEList_norm <- calcNormFactors(myDGEList, method="RLE"))
+rpkmMatrix <- rpkm(myDGEList_norm, x_nw$Length)
+head(rpkmMatrix)
+rpkmMatrix_log <- rpkm(myDGEList_norm, x_nw$Length, log=TRUE)
+head(rpkmMatrix_log)
+fpkm_log<-(rpkmMatrix_log)/2
+head(fpkm_log)
+#write.table(fpkm_log, file="GSE75923_AS_TOM_FPKM_LOG.txt", quote=FALSE, row.names=a_nw, col.names= c("ensembl_gene_id\", \"logFPKM_ctr", "logFPKM_tr"), sep="\t")
+write.table(fpkm_log, file="GSE75923_AS_TOM_FPKM_LOG_TREATED.txt", quote=FALSE, row.names=a_nw, col.names= c("ensembl_gene_id\", \"logFPKM_tr"), sep="\t")
+#system(" sed 's/\", \"/\t/g' GSE75923_AS_TOM_FPKM_LOG.txt | sort -k1 >GSE75923_AS_TOM_FPKM_LOG_FINAL.txt")
+system(" sed 's/\", \"/\t/g' GSE75923_AS_TOM_FPKM_LOG_TREATED.txt | sort -k1 >GSE75923_AS_TOM_FPKM_LOG_TREATED_FINAL.txt")
+system("grep -c \"\" GSE75923_AS_TOM_FPKM_LOG_TREATED_FINAL.txt")
+#23288
+
+#myDGEList_RLE <- calcNormFactors(myDGEList, method="RLE")
+#rpkmMatrix_RLE <- rpkm(myDGEList_RLE, x_nw$Length)
+#head(rpkmMatrix_RLE)
+#rpkmMatrix_log_RLE <- rpkm(myDGEList_RLE, x_nw$Length, log=TRUE)
+#head(rpkmMatrix_log_RLE)
+#fpkm_log_RLE<-(rpkmMatrix_log_RLE)/2
+#head(fpkm_log_RLE)
+
+#system(" sed 's/\", \"/\t/g' SOLANUM_LYCOPERSICUM_FPKM_LOG | grep -c \"\"")
+#write.table(data.frame("ensembl_gene_id"=a_nw,fpkm_log),"a.txt", row.names=FALSE)
+########################################################
+#write.table(data.frame("ensembl_gene_id"=a_nw,fpkm_log),"a.txt", row.names=FALSE)
+
+#############METHOD II to calculate RPKM############################
+group <- c("tr")
+d_nw <- DGEList(counts=z_nw,group=factor(group))
+dge_nw = calcNormFactors(d_nw)
+gene.lengths_nw <-y_nw$Length
+expr_norm_nw <- rpkm(dge_nw, log=FALSE,gene.lengths_nw)      
+expr_norm_nw
+head(expr_norm_nw)
+expr_norm_nw_log <- rpkm(dge_nw, log=TRUE,gene.lengths_nw)
+head(expr_norm_nw_log)
+expr_norm_nw_fpkm_log<-(expr_norm_nw_log)/2
+#fpkm_norm <- expr_norm/2                 #With single-end reads, FPKM and RPKM are synonymous. With paired-end reads RPKM = 2 x FPKM. https://www.researchgate.net/post/How_can_FPKM_and_RPKM_be_compared
+
+########################################################
+
+#Same results using both methods
+########################################################
+##to calculate cpmlcpm_nw
+head(d_nw$counts)
+cpm(d_nw)
+head(cpm(d_nw))
+cpm_nw <- cpm(d_nw) 
+lcpm_nw <- cpm(d_nw, log=TRUE)
+#colors = c("gray","red","green","blue","yellow","purple","orange", "pink") 
+
+#boxplot(lcpm_nw, las = 2, col = colors, main = "", outline = FALSE)
+#boxplot(cpm_nw, las = 2, col = colors, main = "", outline = FALSE)
+######################################################################################################################
+
+##############to calculate start and end position of gene from start and end position of gene########################
+#sol_lyc <- useMart(dataset="slycopersicum_eg_gene", biomart="plants_mart", host="plants.ensembl.org")
+#listFilters(sol_lyc)
+#fields = c("chromosome_name", "strand", "ensembl_gene_id", "start_position", "end_position")
+#fields = c("chromosome_name", "strand", "ensembl_gene_id", "ensembl_exon_id", "start_position", "end_position","exon_chrom_start","exon_chrom_end")
+#annot.df <- getBM(attributes=fields, mart=sol_lyc)
+#annot.df
+#head(annot.df)
+#write.table(annot.df, file="SOLANUM_LYCPPERSICUM_BIOMART", quote=FALSE, row.names=F, col.names= "Length", sep="\t")
+#system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/GSE75923/")
+############################################################################################################################
+#class(a_nw)
+#[1] "factor
+#as.character(a_nw)
+#as.data.frame(cbind(as.character(a_nw), fpkm_log))->Tomato_AS_DF
+#as.data.frame(cbind(as.character(a_nw), expr_norm_nw_fpkm_log))->Tomato_AS_DF_METHOD_II
+
+###################################################
+###DATA2
+###Getting the data GSE71428 (Affymetrix data of AS against tomato)
+###################################################
+
+getwd()
+#"/home/shivalika/Documents/EXPERIMENT_1"
+library(GEOquery)
+getGEOSuppFiles("GSE71428")                             #due to error in network connectivity, data was manullay curated from the GEO
+setwd("/home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/GSE71428/")
+system("tar -xvf GSE71428_RAW.tar")
+#GSM1834098_EBSC1.CEL.gz
+#GSM1834099_EBSC2.CEL.gz
+#GSM1834100_EBSC3.CEL.gz
+#GSM1834101_EBST1.CEL.gz
+#GSM1834102_EBST2.CEL.gz
+#GSM1834103_EBST3.CEL.gz
+#GSM1834104_EBTC1.CEL.gz
+#GSM1834105_EBTC2.CEL.gz
+#GSM1834106_EBTC3.CEL.gz
+#GSM1834107_EBTT1.CEL.gz
+#GSM1834108_EBTT2.CEL.gz
+#GSM1834109_EBTT3.CEL.gz
+list.files()
+list.celfiles()
+#source("http://bioconductor.org/biocLite.R")
+#biocLite("oligo")
+#library(oligo)
+CEL_AFFY_AS_TOMATO <- list.files( pattern = "[gz]")
+CEL_AFFY_AS_TOMATO
+#[1] "GSM1834098_EBSC1.CEL.gz" "GSM1834099_EBSC2.CEL.gz"
+#[3] "GSM1834100_EBSC3.CEL.gz" "GSM1834101_EBST1.CEL.gz"
+#[5] "GSM1834102_EBST2.CEL.gz" "GSM1834103_EBST3.CEL.gz"
+#[7] "GSM1834104_EBTC1.CEL.gz" "GSM1834105_EBTC2.CEL.gz"
+#[9] "GSM1834106_EBTC3.CEL.gz" "GSM1834107_EBTT1.CEL.gz"
+#[11] "GSM1834108_EBTT2.CEL.gz" "GSM1834109_EBTT3.CEL.gz"
+
+sapply(CEL_AFFY_AS_TOMATO, gunzip)
+list.files(pattern="\\.CEL$")
+#[1] "GSM1834098_EBSC1.CEL" "GSM1834099_EBSC2.CEL" "GSM1834100_EBSC3.CEL"
+#[4] "GSM1834101_EBST1.CEL" "GSM1834102_EBST2.CEL" "GSM1834103_EBST3.CEL"
+#[7] "GSM1834104_EBTC1.CEL" "GSM1834105_EBTC2.CEL" "GSM1834106_EBTC3.CEL"
+#[10] "GSM1834107_EBTT1.CEL" "GSM1834108_EBTT2.CEL" "GSM1834109_EBTT3.CEL"
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/GSE71428/")
+
+library(affy)
+source("http://bioconductor.org/biocLite.R")
+biocLite("affycoretools")
+#library(affycoretools)
+CEL_AFFY_AS_TOMATO_READ<-ReadAffy()
+#AffyBatch object
+#size of arrays=478x478 features (22 kb)
+#cdf=Tomato (10209 affyids)
+#number of samples=12
+#number of genes=10209
+#annotation=tomato
+#notes=
+
+#CEL_AFFY_AS_TOMATO_affy.data = ReadAffy(filenames = "GSM1834098_EBSC1.CEL", "GSM1834099_EBSC2.CEL", "GSM1834100_EBSC3.CEL", "GSM1834101_EBST1.CEL", "GSM1834102_EBST2.CEL", "GSM1834103_EBST3.CEL")
+CEL_AFFY_AS_TOMATO_affy.data = ReadAffy(filenames = "GSM1834101_EBST1.CEL", "GSM1834102_EBST2.CEL", "GSM1834103_EBST3.CEL")
+#AffyBatch object
+#size of arrays=478x478 features (18 kb)
+#cdf=Tomato (10209 affyids)
+#number of samples=3
+#number of genes=10209
+#annotation=tomato
+#notes=
+
+#########With RMA####################################################################################################################################################################################
+eset_RMA_GSE71428 <- rma(CEL_AFFY_AS_TOMATO_affy.data)              #RMA method was used for enormalization and background correction/BACKGROUND CORRECTION;2. NORMALIZATION;3. SUMMARIZATION.
+#Background correcting
+#Normalizing
+#Calculating Expression
+
+eset_RMA_GSE71428_EXPRS<-exprs(eset_RMA_GSE71428)
+eset_RMA_GSE71428_EXPRS
+#eset_GCRMA <- gcrma(CEL_AFFY_AS_TOMATO_affy.data)
+#eset_GCRMA_EXPRS<-exprs(eset_GCRMA)
+head(eset_RMA_GSE71428_EXPRS)
+class(eset_RMA_GSE71428_EXPRS) #[1] "matrix"
+setwd("/home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/")
+write.table(eset_RMA_GSE71428_EXPRS, file="eset_RMA_GSE71428_EXPRS.txt", quote=FALSE, row.names=T, col.names = F, sep="\t")
+system("echo 'affy_tomato\tGSM1834101_EBST1.CEL\tGSM1834102_EBST2.CEL\tGSM1834103_EBST3.CEL' | cat - eset_RMA_GSE71428_EXPRS.txt > eset_RMA_GSE71428_EXPRS_final.txt")
+
+ensembl_list<-listDatasets(useMart(biomart="plants_mart", host="plants.ensembl.org"))
+ensembl_list
+ensembl_plant = useMart("plants_mart", host="plants.ensembl.org", dataset = "slycopersicum_eg_gene")
+ensembl_plant
+attributes_ensembl_plant = listAttributes(ensembl_plant)
+attributes_ensembl_plant
+attributes_ensembl_plant[1:10,]
+eset_affyids_RMA_GSE71428<-rownames(eset_RMA_GSE71428_EXPRS)
+eset_affyids_RMA_GSE71428
+####################################################################################################################################################################################
+sink("attributes_ensembl_plant.txt")
+write.table(attributes_ensembl_plant)
+sink()
+
+#########With GCRMA####################################################################################################################################################################################
+eset_GCRMA_GSE71428 <- gcrma(CEL_AFFY_AS_TOMATO_affy.data)              #GCRMA method was used for nogcrmalization and background correction/BACKGROUND CORRECTION;2. NOGCRMALIZATION;3. SUMMARIZATION.
+#Adjusting for optical effect...Done.
+#Computing affinities.Done.
+#Adjusting for non-specific binding...Done.
+#Normalizing
+#Calculating Expression
+
+eset_GCRMA_GSE71428_EXPRS<-exprs(eset_GCRMA_GSE71428)
+eset_GCRMA_GSE71428_EXPRS
+#eset_GCRMA <- gcrma(CEL_AFFY_AS_TOMATO_affy.data)
+#eset_GCRMA_EXPRS<-exprs(eset_GCGCRMA)
+head(eset_GCRMA_GSE71428_EXPRS)
+class(eset_GCRMA_GSE71428_EXPRS)  #[1] "matrix"
+write.table(eset_GCRMA_GSE71428_EXPRS, file="eset_GCRMA_GSE71428_EXPRS.txt", quote=FALSE, row.names=T, col.names = F, sep="\t")
+system("echo 'affy_tomato\tGSM1834101_EBST1.CEL\tGSM1834102_EBST2.CEL\tGSM1834103_EBST3.CEL' | cat - eset_GCRMA_GSE71428_EXPRS.txt > eset_GCRMA_GSE71428_EXPRS_FINAL.txt")
+
+ensembl_list<-listDatasets(useMart(biomart="plants_mart", host="plants.ensembl.org"))
+ensembl_list
+ensembl_plant = useMart("plants_mart", host="plants.ensembl.org", dataset = "slycopersicum_eg_gene")
+ensembl_plant
+attributes_ensembl_plant = listAttributes(ensembl_plant)
+attributes_ensembl_plant
+attributes_ensembl_plant[1:10,]
+eset_affyids_GCRMA_GSE71428<-rownames(eset_GCRMA_GSE71428_EXPRS)
+eset_affyids_GCRMA_GSE71428
+####################################################################################################################################################################################
+library(biomaRt)
+library(GenomicFeatures)
+listMarts(host="www.ensembl.org")
+
+
+filters = listFilters(ensembl_plant)
+filters
+filters[1:5,]
+eset_affyids_GSE71428_ensemblids <- getBM(attributes = c("affy_tomato", "ensembl_gene_id"), filters = c("affy_tomato"), values = eset_affyids_GCRMA_GSE71428, mart = ensembl_plant)
+
+
+
+class(eset_affyids_GSE71428_ensemblids)
+head(eset_affyids_GSE71428_ensemblids)
+write.table(eset_affyids_GSE71428_ensemblids, file="eset_affyids_GSE71428_ensemblids.txt", quote=FALSE, row.names=F, sep="\t")
+
+system("awk 'FNR==NR{a[$1]= $2;next}($1 in a) {print a[$1]\"\t\"$2\"\t\"$3\"\t\"$4\"\t\"$5\"\t\"$6\"\t\"$7}' eset_affyids_GSE71428_ensemblids.txt eset_GCRMA_GSE71428_EXPRS_FINAL.txt | sort -k1 >GSE71428_ensembl_IDs_EXPRS.txt")
+system("grep -c \"\" GSE71428_ensembl_IDs_EXPRS.txt")
+#8322
+#system("awk -v OFS=\"\t\" '{gsub(/\\..*$/,\"\",$1)}1' GSE71428_ensembl_IDs_EXPRS.txt | sort -k1 >GSE71428_ensembl_IDs_EXPRS_FINAL.txt")
+
+system("awk -v OFS=\"\t\" '{gsub(/\\..*$/,\"\",$1)}1' GSE71428_ensembl_IDs_EXPRS.txt | sort -k1,1 -u >GSE71428_ensembl_IDs_EXPRS_FINAL.txt")
+#6966
+#(8322-6966=1356) #lost ids
+#system("awk -v OFS=\"\t\" '{gsub(/\\..*$/,\"\",$1)}1' FINAL_EXPRS_IDs | awk -F\"\t\" '{print $1}' | sort -u | grep -c \"\" >ll")
+
+
+
+###########################################################################################################################################################################
+#BOXPLOT to represent Normalized and unnormalized data in TOMATO 
+###########################################################################################################################################################################
+exprs(CEL_AFFY_AS_TOMATO_affy.data)->GSE71428_unnorm
+
+colors = c("blue","yellow","pink")
+par(mfrow=c(1,2))
+boxplot(GSE71428_unnorm, las = 2, cex=0.5, col = colors, main = "", outline = FALSE)
+boxplot(eset_GCRMA_GSE71428_EXPRS, las = 2, cex=0.5, col = colors, main = "", outline = FALSE)
+
+colors = c("gray","red","green","blue","yellow","purple","orange", "pink") 
+parmfrom=c(1,2)
+
+png(file = "BOXPLOT_GSE75923_un_vs_norm.png", width = 5, height = 5, units = "in", res = 300)
+par(mfrow=c(2,2), oma=c(4, 4, 4, 4))
+boxplot(z_nw, las = 2, col = 3:10, main = "Unnormalized data (GSE75923)", horizontal=FALSE, cex.axis=0.2, cex.main=0.4, outline = FALSE)
+boxplot(expr_norm_nw_fpkm_log, las = 2, col = 3:10, main = "Normalized data (GGSE75923)",  horizontal=FALSE, cex.axis=0.2, cex.main=0.4,outline = FALSE)
+
+dev.off()
+
+png(file = "BOXPLOT_GSE71428_un_vs_norm.png", width = 5, height = 5, units = "in", res = 300)
+par(mfrow=c(1,2), oma=c(2, 2,2, 2))
+boxplot(GSE71428_unnorm, las = 2, col = 3:10, main = "Unnormalized data (GSE71428)",  horizontal=FALSE, cex.axis=0.2, cex.main=0.4,outline = FALSE)
+boxplot(eset_GCRMA_GSE71428_EXPRS, las = 2, col = 3:10, main = "Normalized data (GSE71428)", horizontal=FALSE, cex.axis=0.2, cex.main=0.4, outline = FALSE)
+dev.off()
+
+png(file = "AS_TOM_GCRMA.png", width = 7, height = 7, units = "in", res = 300)
+par(mfrow=c(2,2), oma=c(2, 2,2, 2))
+plot((density(z_nw)), xlab = "Log (base 2) intensities", ylab="density", main = "Unormalized data (GSE75923)", cex.axis=0.5, cex.lab=0.5, cex.main=0.7)
+polygon((density(z_nw)), col="orange", border="blue")
+plot((density(expr_norm_nw_fpkm_log)), xlab = "Log (base 2) intensities", ylab="density", main = "Normalized data (GSE75923)", cex.axis=0.5, cex.lab=0.5, cex.main=0.7)
+polygon((density(expr_norm_nw_fpkm_log)), col="orange", border="blue")
+plot((density(GSE71428_unnorm)), xlab = "Log (base 2) intensities", ylab="density", main = "Unormalized data (GSE71428)", cex.axis=0.5, cex.lab=0.5, cex.main=0.7)
+polygon((density(GSE71428_unnorm)), col="orange", border="blue")
+plot((density(eset_GCRMA_GSE71428_EXPRS)), xlab = "Log (base 2) intensities", ylab="density", main = "Normalized data (GSE71428)", cex.axis=0.5, cex.lab=0.5, cex.main=0.7)
+polygon((density(eset_GCRMA_GSE71428_EXPRS)), col="orange", border="blue")
+dev.off()
+
+png(file = "BOXPLOT_TOM_AS_un_vs_norm.png", width = 7, height = 7, units = "in", res = 300)
+par(mfrow=c(2,2), oma=c(2, 2,2, 2))
+boxplot(z_nw, las = 2, col = 3:10, main = "Unormalized data (GSE75923)", horizontal=FALSE, xlab="logFPKM_tr",cex.lab=0.5, cex.axis=0.6, cex.main=0.5, outline = FALSE)
+boxplot(expr_norm_nw_fpkm_log, las = 2, col = 3:10, main = "Normalized data (GGSE75923)",  xlab="logFPKM_tr", cex.lab=0.5, horizontal=FALSE, cex.axis=0.5, cex.main=0.6,outline = FALSE)
+boxplot(GSE71428_unnorm, las = 2, col = 3:10, main = "Unormalized data (GSE71428)",  horizontal=FALSE, cex.axis=0.5, cex.main=0.6,outline = FALSE)
+boxplot(eset_GCRMA_GSE71428_EXPRS, las = 2, col = 3:10, main = "Normalized data (GSE71428)", horizontal=FALSE, cex.axis=0.5, cex.main=0.6, outline = FALSE)
+dev.off()
+
+
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/GSE71428/")
+
+###########################################################################################################################################################################
+#Merging data from two studies (DATA1 AND DATA2) Illumina and microarray
+###########################################################################################################################################################################
+
+setwd("/home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA")
+system("grep -c \"\" GSE71428_ensembl_IDs_EXPRS_FINAL.txt")
+#6967
+system("grep -c \"\" GSE75923_AS_TOM_FPKM_LOG_TREATED_FINAL.txt")
+#23288
+
+
+#system("grep -c \"\" SOLANUM_LYCOPERSICUM_FPKM_LOG_nw ")
+#23288
+#system("grep -c \"\" FINAL_EXPRS_IDs_main")
+#6903
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA")
+save.image("1.RData")
+list.files()
+#[1] "1.RData"                          "FINAL_EXPRS_IDs_main"            
+#[3] "SOLANUM_LYCOPERSICUM_FPKM_LOG_nw"
+
+library(inSilicoMerging) 
+library(rjson)
+library(RCurl)
+library(bitops)
+library(inSilicoDb)
+library(Biobase)
+library(matrixStats)
+library(limma)
+library("frma")
+library(inSilicoMerging)
+library(affy)
+
+#system("awk 'FNR==NR{a[$1]= $2;b[$1]= $3; next}($1 in a) {print $1\"\t\"a[$1]\"\t\"b[$1]\"\t\"$2\"\t\"$3\"\t\"$4\"\t\"$5\"\t\"$6\"\t\"$7}' GSE75923_AS_TOM_FPKM_LOG_TREATED_FINAL.txt GSE71428_ensembl_IDs_EXPRS_FINAL.txt >COMM_EXPRS_AS_TOM_IDs")
+system("awk 'FNR==NR{a[$1]= $2;b[$1]= $3; next}($1 in a) {print $1\"\t\"a[$1]\"\t\"$2\"\t\"$3\"\t\"$4}' GSE75923_AS_TOM_FPKM_LOG_TREATED_FINAL.txt GSE71428_ensembl_IDs_EXPRS_FINAL.txt >COMM_EXPRS_AS_TOM_IDs.txt")
+system("awk 'FNR==NR{a[$1]= $2;b[$1]= $3; next}($1 in a) {print $1\"\t\"a[$1]\"\t\"$2\"\t\"$3\"\t\"$4}' GSE75923_AS_TOM_FPKM_LOG_TREATED_FINAL.txt GSE71428_ensembl_IDs_EXPRS_FINAL.txt | grep -c \"\"")
+#6463 (except header)
+#system("awk 'FNR==NR{a[$1]= $2;b[$1]= $3; next}($1 in a) {print $1\"\t\"a[$1]\"\t\"b[$1]\"\t\"$2\"\t\"$3\"\t\"$4\"\t\"$5\"\t\"$6\"\t\"$7}' SOLANUM_LYCOPERSICUM_FPKM_LOG_nw FINAL_EXPRS_IDs_main | grep -c \"\"")      #same result 6681 for vice versa files
+#6681
+#awk 'FNR==NR{a[$1]= $2;b[$1]= $3; next}($1 in a) {print $1"\t"a[$1]"\t"b[$1]"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6"\t"$7}' SOLANUM_LYCOPERSICUM_FPKM_LOG_nw FINAL_EXPRS_IDs_nw | grep -c ""
+#7899
+#system("awk 'FNR==NR{a[$1]= $2;b[$1]= $3; next}($1 in a) {print $1\"\t\"a[$1]\"\t\"b[$1]\"\t\"$2\"\t\"$3\"\t\"$4\"\t\"$5\"\t\"$6\"\t\"$7}' FINAL_EXPRS_IDs_main SOLANUM_LYCOPERSICUM_FPKM_LOG_nw | grep -c \"\"")
+#6681
+#intersect((rownames(GSE71428_data)), ((rownames(GSE75923_data)))
+
+#res <- merge(GSE71428_data,GSE75923_data,by=intersect((rownames(GSE71428_data)), ((rownames(GSE75923_data))), all=T))
+#merge(GSE71428_data_nw, GSE75923_data_nw, "ensembl_gene_id")
+#merge(x=GSE75923_data_nw, y=GSE71428_data_nw, by.x="ensembl_gene_id", by.y="ensembl_gene_id")
+comm_AS_expr<-read.table("COMM_EXPRS_AS_TOM_IDs.txt", row.names=1, header=T, sep="\t")
+rownames(comm_AS_expr)
+dim(comm_AS_expr) #[1] 6463    4
+class(comm_AS_expr) #[1] "data.frame"
+#@@@@@@@@@@@@@@@@@@@@@@@@@@CHANGED@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+#system("awk -F\"\t\" '{print $1\"\t\"$2\"\t\"$3}' COMM_EXPRS_AS_TOM_IDs >object_GSE75923")
+#system("grep -c \"\" object_GSE75923")
+#system("awk -F\"\t\" '{print $1\"\t\"$4\"\t\"$5\"\t\"$6\"\t\"$7\"\t\"$8\"\t\"$9}' COMM_EXPRS_AS_TOM_IDs >object_GSE71428")
+#system("grep -c \"\" object_GSE71428")
+#object_GSE75923_expr<-read.table("object_GSE75923", row.names=1, header=T, sep="\t")
+
+#head(object_GSE75923_expr)
+#class(object_GSE75923_expr)
+#[1] "data.frame"
+#dim(object_GSE75923_expr)
+#[1] 6680    2
+
+#object_GSE71428_expr<-read.table("object_GSE71428", row.names=1, header=T, sep="\t")
+#head(object_GSE71428_expr)
+#class(object_GSE71428_expr)
+#[1] "data.frame"
+#dim(object_GSE71428_expr)
+#[1] 6680    6
+
+system("awk -F\"\t\" '{print $1\"\t\"$2}' COMM_EXPRS_AS_TOM_IDs.txt >object_GSE75923_NW.txt")
+system("grep -c \"\" object_GSE75923_NW.txt")
+#6463
+system("awk -F\"\t\" '{print $1\"\t\"$3\"\t\"$4\"\t\"$5}' COMM_EXPRS_AS_TOM_IDs.txt >object_GSE71428_NW.txt")
+system("grep -c \"\" object_GSE71428_NW.txt")
+#6463
+object_GSE75923_NW<-round(read.table("object_GSE75923_NW.txt", row.names=1, header=T, sep="\t"), 4)
+head(object_GSE75923_NW)
+class(object_GSE75923_NW)
+#[1] "data.frame"
+dim(object_GSE75923_NW)
+#[1] 6463    1
+
+object_GSE71428_NW<-round(read.table("object_GSE71428_NW.txt", row.names=1, header=T, sep="\t"),4)
+head(object_GSE71428_NW)
+class(object_GSE71428_NW)
+#[1] "data.frame"
+dim(object_GSE71428_NW)
+#[1] 6463    3
+
+eset_object_GSE75923_NW<-new("ExpressionSet", exprs=as.matrix(object_GSE75923_NW))
+eset_object_GSE75923_NW
+#ExpressionSet (storageMode: lockedEnvironment)
+#assayData: 6463 features, 1 samples 
+#  element names: exprs 
+#protocolData: none
+#phenoData: none
+#featureData: none
+#experimentData: use 'experimentData(object)'
+#Annotation: 
+class(eset_object_GSE75923_NW)
+#[1] "ExpressionSet"
+#attr(,"package")
+#[1] "Biobase"
+head(exprs(eset_object_GSE75923_NW))
+
+
+eset_object_GSE71428_NW<-new("ExpressionSet", exprs=as.matrix(object_GSE71428_NW))
+eset_object_GSE71428_NW
+#ExpressionSet (storageMode: lockedEnvironment)
+#assayData: 6463 features, 3 samples 
+#  element names: exprs 
+#protocolData: none
+#phenoData: none
+#featureData: none
+#experimentData: use 'experimentData(object)'
+#Annotation:   
+class(eset_object_GSE71428_NW)
+#[1] "ExpressionSet"
+#attr(,"package")
+#[1] "Biobase"
+head(exprs(eset_object_GSE71428_NW))
+ #              GSM1834101_EBST1.CEL GSM1834102_EBST2.CEL GSM1834103_EBST3.CEL
+#Solyc01g005030             8.155985             8.064942             8.086113
+#Solyc01g005100             6.296568             6.148012             6.302017
+#Solyc01g005210             9.355712             9.573129             9.714206
+#Solyc01g005240             7.359821             7.335841             7.345920
+#Solyc01g005250             9.614854             9.869714             9.888737
+#Solyc01g005380             7.673175             7.640256             7.660996
+
+virtArrays<-list(eset_object_GSE75923_NW, eset_object_GSE71428_NW)
+VIR_ARRAY  <- virtualArrayExpressionSets(all_expression_sets=c(eset_object_GSE75923_NW,eset_object_GSE71428_NW),identifier = "SYMBOL", collapse_fun = median, removeBatcheffect = "EB", sampleinfo = FALSE)
+VIR_ARRAY  <- virtualArrayExpressionSets(all_expression_sets=c(eset_object_GSE75923_NW,eset_object_GSE71428_NW),identifier = "SYMBOL", removeBatcheffect = "EB")
+virtArrays[["EB"]] <-virtualArrayExpressionSets(virtArrays)
+
+# load packages
+# require(affyPLM)
+# require(affy)
+# require(plyr)
+# require(reshape2)
+# require(preprocessCore)
+# require(org.Hs.eg.db)
+
+
+CBIND_AS_EXPRS<-cbind(exprs(eset_object_GSE75923_NW), exprs(eset_object_GSE71428_NW))
+head(CBIND_AS_EXPRS)
+dim(CBIND_AS_EXPRS)#[1] 6463    4
+class(CBIND_AS_EXPRS)
+
+shiv1<-new("ExpressionSet", exprs=CBIND_AS_EXPRS)
+normalize(shiv1,method="quantiles")->shiv2
+normalize(shiv1,method="invariantset")->shiv3
+
+png(file = "COMPARE_CBIND_QUANTILE_INVARIANT.png", width = 4, height = 7, units = "in", res = 300)
+par(mfrow = c(3,1))
+boxplot(COMM_EXPRS_TOM_AS_PI_cbind, las = 2, col = 3:10, main = "Unnormalized", horizontal=FALSE, cex.axis=0.4, cex.main=0.6, outline = FALSE)
+boxplot(COMM_EXPRS_TOM_AS_PI_shiv2, las = 2, col = 3:10, main = "Quantile_norm", horizontal=FALSE, cex.axis=0.4, cex.main=0.6, outline = FALSE)
+boxplot(COMM_EXPRS_TOM_AS_PI, las = 2, col = 3:10, main = "Invariantset_norm", horizontal=FALSE, cex.axis=0.4, cex.main=0.6, outline = FALSE)
+dev.off()
+
+exprs(eset_object_GSE71428_NW)->GSE71428_AS_EXPRS #[1] 6463    3
+########################################################################################
+#######B. TOMATO VS PYTOPHTHORA INFESTANS########################################################
+setwd("/home/shivalika/Documents/EXPERIMENT_1/TOMATO_PINFESTANS/")
+
+library(mclust)
+library(nor1mix)
+library(stats)
+library(splines)
+library(preprocessCore)
+library(SparseM)
+library(quantreg)
+library(cqn)
+library(limma)
+library(edgeR)
+library(scales)
+library(Rsubread)
+library(GenomicFeatures)
+library(GenomicRanges)
+library(BiocGenerics)
+library(Biobase) 
+library(BiocParallel) 
+library(genefilter) 
+library(methods) 
+library(locfit)
+library(geneplotter)
+library(ggplot2)
+library(Rcpp) 
+library(Hmisc)
+library(curl)
+library(gcrma)
+library(affy)
+library(RcppArmadillo)
+library(DESeq2)
+
+
+library(GEOquery)  #to use function getGEOSuppFiles
+##DATA1
+getGEOSuppFiles("GSE33177")
+list.files()
+#[1] "GSE33177"
+setwd("/home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/TOM_PI_MERGE_GSE33177_OLIVER_JOECYLN")
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/TOM_PI_MERGE_GSE33177_OLIVER_JOECYLN")
+
+list.files()
+#[1] "filelist.txt"     "GSE33177_RAW.tar"
+system("tar -xvf GSE33177_RAW.tar")
+#GSM821376_01-CO1.CEL.gz
+#GSM821377_02-CO2.CEL.gz
+#GSM821378_01-CO4.CEL.gz
+#GSM821379_05-P15.CEL.gz
+#GSM821380_06-P16.CEL.gz
+#GSM821381_07-P13.CEL.gz
+#GSM821382_08-P14.CEL.gz
+list.files()
+#[1] "filelist.txt"            "GSE33177_RAW.tar"       
+#[3] "GSM821376_01-CO1.CEL.gz" "GSM821377_02-CO2.CEL.gz"
+#[5] "GSM821378_01-CO4.CEL.gz" "GSM821379_05-P15.CEL.gz"
+#[7] "GSM821380_06-P16.CEL.gz" "GSM821381_07-P13.CEL.gz"
+#[9] "GSM821382_08-P14.CEL.gz"
+setwd("/home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/TOM_PI_MERGE_GSE33177_OLIVER_JOECYLN")
+#system("gunzip -k GSM82*CEL.gz")
+system("gunzip -k GSM821379_05-P15.CEL.gz GSM821380_06-P16.CEL.gz GSM821381_07-P13.CEL.gz GSM821382_08-P14.CEL.gz")
+#CEL_AFFY_PI_TOMATO <- list.files( pattern = "[gz]")
+#CEL_AFFY_PI_TOMATO
+#[1] "GSM821376_01-CO1.CEL.gz" "GSM821377_02-CO2.CEL.gz"
+#[3] "GSM821378_01-CO4.CEL.gz" "GSM821379_05-P15.CEL.gz"
+#[5] "GSM821380_06-P16.CEL.gz" "GSM821381_07-P13.CEL.gz"
+#[7] "GSM821382_08-P14.CEL.gz"
+#sapply(CEL_AFFY_PI_TOMATO, gunzip)
+#GSM821376_01-CO1.CEL.gz GSM821377_02-CO2.CEL.gz GSM821378_01-CO4.CEL.gz 
+#               2308164                 2308086                 2308522 
+#GSM821379_05-P15.CEL.gz GSM821380_06-P16.CEL.gz GSM821381_07-P13.CEL.gz 
+#                2309174                 2309522                 2306304 
+#GSM821382_08-P14.CEL.gz 
+#               2306496 
+
+list.files(pattern="\\.CEL$")
+#[1] "GSM821379_05-P15.CEL" "GSM821380_06-P16.CEL" "GSM821381_07-P13.CEL"
+#[4] "GSM821382_08-P14.CEL"
+
+
+library(affy)
+library(affycoretools)
+CEL_AFFY_PI_TOMATO_READ<-ReadAffy(filenames="GSM821379_05-P15.CEL", "GSM821380_06-P16.CEL", "GSM821381_07-P13.CEL", "GSM821382_08-P14.CEL")
+CEL_AFFY_PI_TOMATO_READ
+#AffyBatch object
+#size of arrays=478x478 features (19 kb)
+#cdf=Tomato (10209 affyids)
+#number of samples=4
+#number of genes=10209
+#annotation=tomato
+#notes=
+head(exprs(CEL_AFFY_PI_TOMATO_READ))
+colnames(exprs(CEL_AFFY_PI_TOMATO_READ))
+GSE33177_data <- gsub("\\.CEL", "", sampleNames(CEL_AFFY_PI_TOMATO_READ))
+sampleNames(CEL_AFFY_PI_TOMATO_READ)=GSE33177_data
+sampleNames(CEL_AFFY_PI_TOMATO_READ)
+#[1] "GSM821376_01-CO1" "GSM821377_02-CO2" "GSM821378_01-CO4" "GSM821379_05-P15"
+#[5] "GSM821380_06-P16" "GSM821381_07-P13" "GSM821382_08-P14"
+
+#6               27               34               40
+
+class(CEL_AFFY_PI_TOMATO_READ) #affybatch
+#[1] "AffyBatch"
+#attr(,"package")
+#[1] "affy"
+eset_GCRMA_TOMATO_PI <- gcrma(CEL_AFFY_PI_TOMATO_READ)              #GCRMA method was used for normalization and background correction/BACKGROUND CORRECTION;2. NOGCRMALIZATION;3. SUMMARIZATION.
+eset_GCRMA_TOMATO_PI_EXPRS<-exprs(eset_GCRMA_TOMATO_PI)
+eset_GCRMA_TOMATO_PI_EXPRS
+#eset_GCRMA <- gcrma(CEL_AFFY_AS_TOMATO_affy.data)
+#eset_GCRMA_EXPRS<-exprs(eset_GCRMA)
+head(eset_GCRMA_TOMATO_PI_EXPRS)
+class(eset_GCRMA_TOMATO_PI_EXPRS)
+#[1] "matrix"
+dim(eset_GCRMA_TOMATO_PI_EXPRS)
+#[1] 10209     4
+(exprs(CEL_AFFY_PI_TOMATO_READ))->GSE33177_unnorm
+
+
+write.table(data.frame("affy_tomato"=rownames(eset_GCRMA_TOMATO_PI_EXPRS),eset_GCRMA_TOMATO_PI_EXPRS),"eset_GCRMA_TOMATO_PI_EXPRS.txt", quote=FALSE, row.names=F, sep="\t")
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/TOM_PI_MERGE_GSE33177_OLIVER_JOECYLN")
+eset_affyids_TOMATO_PI_EXPRS<-rownames(eset_GCRMA_TOMATO_PI_EXPRS)
+eset_affyids_TOMATO_PI_EXPRS
+
+library(biomaRt)
+ensembl_list<-listDatasets(useMart(biomart="plants_mart", host="plants.ensembl.org"))
+
+ensembl_list
+
+
+ensembl_plant = useMart("plants_mart", host="plants.ensembl.org", dataset = "slycopersicum_eg_gene")
+ensembl_plant
+#Object of class 'Mart':
+ #Using the plants_mart BioMart database
+# Using the slycopersicum_eg_gene dataset
+attributes_ensembl_plant = listAttributes(ensembl_plant)
+attributes_ensembl_plant
+attributes_ensembl_plant[1:10,]
+#                    name              description
+#1        ensembl_gene_id           Gene stable ID
+#2  ensembl_transcript_id     Transcript stable ID
+#3     ensembl_peptide_id        Protein stable ID
+#4        ensembl_exon_id           Exon stable ID
+#5            description         Gene description
+#6        chromosome_name Chromosome/scaffold name
+
+
+filters = listFilters(ensembl_plant)
+filters
+filters[1:5,]
+
+#1    chromosome_name               Chromosome/scaffold name
+#2              start                                  Start
+#3                end                                    End
+#4             strand                                 Strand
+#5 chromosomal_region e.g. 1:100:10000:-1, 1:100000:200000:1
+
+
+eset_ensemblids_TOMATO_PI_EXPR <- getBM(attributes = c("affy_tomato", "ensembl_gene_id"), filters = c("affy_tomato"), values = eset_affyids_TOMATO_PI_EXPRS, mart = ensembl_plant)
+class(eset_ensemblids_TOMATO_PI_EXPR)
+#[1] "data.frame"
+head(eset_ensemblids_TOMATO_PI_EXPR)
+#            affy_tomato  ensembl_gene_id
+#1 LesAffx.65080.1.A1_at Solyc01g005030.2
+#2 LesAffx.20922.1.S1_at Solyc01g005100.2
+#3       Les.388.1.S1_at Solyc01g005210.2
+#4       Les.388.3.A1_at Solyc01g005210.2
+#5       Les.388.2.S1_at Solyc01g005210.2
+#6 LesAffx.35818.1.S1_at Solyc01g005240.2
+
+write.table(eset_ensemblids_TOMATO_PI_EXPR, file="eset_ensemblids_TOMATO_PI_EXPR.txt", quote=FALSE, row.names=F, sep="\t")
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/TOM_PI_MERGE_GSE33177_OLIVER_JOECYLN")
+
+
+system("awk 'FNR==NR{a[$1]= $2;next}($1 in a) {print a[$1]\"\t\"$2\"\t\"$3\"\t\"$4\"\t\"$5}' eset_ensemblids_TOMATO_PI_EXPR.txt eset_GCRMA_TOMATO_PI_EXPRS.txt | sort -k1 >FINAL_GSE33177_PI_EXPR_IDs.txt")
+system("grep -c '^[^ensembl_gene_id]' FINAL_GSE33177_PI_EXPR_IDs.txt")
+#8322
+
+
+system("awk -v OFS=\"\t\" '{gsub(/\\..*$/,\"\",$1)}1' FINAL_GSE33177_PI_EXPR_IDs.txt | sort -k1 >FINAL_GSE33177_PI_EXPR_IDs_8322.txt")
+system("grep -c '^[^ensembl_gene_id]' FINAL_GSE33177_PI_EXPR_IDs_8322.txt")
+#8322
+system("awk -v OFS=\"\t\" '{gsub(/\\..*$/,\"\",$1)}1' FINAL_GSE33177_PI_EXPR_IDs.txt | sort -k1,1 -u >FINAL_TOMATO_PI_EXPR_IDs_6966.txt")
+system("grep -c '^[^ensembl_gene_id]' FINAL_TOMATO_PI_EXPR_IDs_6966.txt")
+#6966
+#(8322-6966=1356) #lost ids
+
+
+system("awk 'FNR==NR{a[$1]= $2;next}($1 in a) {print $1\"\t\"a[$1]\"\t\"$2\"\t\"$3\"\t\"$4\"\t\"$5}' eset_ensemblids_TOMATO_PI_EXPR.txt eset_GCRMA_TOMATO_PI_EXPRS.txt >FINAL_AFFY_GSE33177_PI_EXPRS_IDs.txt")
+system("grep -c '^[^affy]' FINAL_AFFY_GSE33177_PI_EXPRS_IDs.txt")
+#8322
+
+system("awk -v OFS=\"\t\" '{gsub(/\\..*$/,\"\",$2)}1' FINAL_AFFY_GSE33177_PI_EXPRS_IDs.txt >FINAL_AFFY_GSE33177_PI_EXPRS_IDs_8322.txt")
+system("grep -c '^[^affy]' FINAL_AFFY_GSE33177_PI_EXPRS_IDs_8322.txt")
+#8322
+system("awk -v OFS=\"\t\" '{gsub(/\\..*$/,\"\",$2)}1' FINAL_AFFY_GSE33177_PI_EXPRS_IDs_8322.txt | sort -k2,2 -u >FINAL_AFFY_GSE33177_PI_EXPRS_IDs_6966.txt")
+system("grep -c '^[^affy]' FINAL_AFFY_GSE33177_PI_EXPRS_IDs_6966.txt")
+#6966
+
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/TOM_PI_MERGE_GSE33177_OLIVER_JOECYLN")
+
+
+
+###########DATA2. Now to process Ilummina data of OLIVER and convert count to fpkm######################
+# changeworking directory
+#############################################################################################################
+
+setwd("/home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/TOM_PI_MERGE_GSE33177_OLIVER_JOECYLN")
+
+############################################################################################################################
+#Count gene length from GTF/GFF file earlier steps in thelocation ("/home/shivalika/Documents/EXPERIMENT_1/GSE75923/") using following command
+############################################################################################################################
+#https://support.bioconductor.org/p/100772/
+system("wget ftp://ftp.ensemblgenomes.org/pub/plants/release-38/gtf/solanum_lycopersicum/Solanum_lycopersicum.SL2.50.38.gtf.gz")
+system("gunzip -k Solanum_lycopersicum.SL2.50.38.gtf.gz")
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/GSE75923/")
+sol_lyc_gff <- makeTranscriptDbFromGFF("Solanum_lycopersicum.SL2.50.38.gtf", format="gtf")                        #https://support.bioconductor.org/p/99142/
+sol_lyc_gff
+
+#TxDb object:
+#| Db type: TxDb
+#| Supporting package: GenomicFeatures
+#| Data source: Solanum_lycopersicum.SL2.50.38.gtf
+#| Organism: NA
+#| miRBase build ID: NA
+#| transcript_nrow: 35216
+#| exon_nrow: 158905
+#| cds_nrow: 154754
+#| Db created by: GenomicFeatures package from Bioconductor
+#| Creation time: 2018-03-22 10:19:57 +0500 (Thu, 22 Mar 2018)
+#| GenomicFeatures version at creation time: 1.18.7
+#| RSQLite version at creation time: 2.0
+#| DBSCHEMAVERSION: 1.0
+sol_lyc_gff_exonic <- exonsBy(sol_lyc_gff, by="gene")                                                                             #https://support.bioconductor.org/p/99142/
+sol_lyc_gff_exonic
+sol_lyc_gff_red.exonic <- reduce(sol_lyc_gff_exonic)
+sol_lyc_gff_red.exonic
+sol_lyc_gff_exon.lengths <- sum(width(sol_lyc_gff_red.exonic))
+sol_lyc_gff_exon.lengths
+write.table(sol_lyc_gff_exon.lengths, file="SOLANUM_LYCOPERSICUM_EXON_LENGTH_GTF", quote=FALSE, row.names=TRUE, col.names= F, sep="\t")
+system("sort -r -k 1 SOLANUM_LYCOPERSICUM_EXON_LENGTH | sed 's/\\.[0-9]//g' | sed '1iensembl_gene_id\tLength' >FINAL_SOLANUM_LYCOPERSICUM_EXON_LENGTH")
+
+############COPY final gene length file from ("/home/shivalika/Documents/EXPERIMENT_1/GSE75923/") to current location
+
+system("cp /home/shivalika/Documents/EXPERIMENT_1/GSE75923/FINAL_SOLANUM_LYCOPERSICUM_EXON_LENGTH /home/shivalika/Documents/EXPERIMENT_1/TOMATO_PINFESTANS/")
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/TOM_PI_MERGE_GSE33177_OLIVER_JOECYLN")
+
+
+system("(head -n 1 OLIVER_READ_DATA.txt && tail -n +2 OLIVER_READ_DATA.txt | sort | sed 's/\\.[0-9]//g') >OLIVER_READ_DATA_nw.txt")
+system("grep -c '^[^ensembl_gene_id]' OLIVER_READ_DATA_nw.txt")
+#33810
+system("awk 'NR==FNR{a[$1]=$2; next} ($1 in a) {print $0\"\t\"a[$1]}' FINAL_SOLANUM_LYCOPERSICUM_EXON_LENGTH OLIVER_READ_DATA_nw.txt >FINAL_OLIVER_READ_DATA.txt")
+system("grep -c '^[^ensembl_gene_id]' FINAL_OLIVER_READ_DATA.txt")
+#33810
+system("awk -F\"\t\" '{print $1\"\t\"$5\"\t\"$6\"\t\"$7\"\t\"$8}' FINAL_OLIVER_READ_DATA.txt >FINAL_OLIVER_READ_DATA_nw.txt")
+x_OLIVER<-read.table("FINAL_OLIVER_READ_DATA.txt", header=T, sep="\t")
+x_OLIVER
+head(x_OLIVER)
+#  ensembl_gene_id  Pi1     Pi2  Pi3 Length
+
+dim(x_OLIVER)
+#[1] 33810    5
+
+a_OLIVER<-rownames<-x_OLIVER[,1]
+a_OLIVER
+y_OLIVER<-x_OLIVER[,-1]
+y_OLIVER
+dim(y_OLIVER)
+#[1] 33810    4
+names(x_OLIVER)   #display header
+names(y_OLIVER)
+
+b_OLIVER<-colnames<- names(y_OLIVER)
+b_OLIVER
+#z<-y[-1,]
+z_OLIVER<-y_OLIVER[,-4]
+z_OLIVER
+dim(z_OLIVER)
+#[1] 33810     3
+head(z_OLIVER)
+
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/TOM_PI_MERGE_GSE33177_OLIVER_JOECYLN")
+
+###########METHOD I to calculate RPKM############################
+library(edgeR)
+myDGEList_OLIVER <- DGEList(counts=z_OLIVER , genes=x_OLIVER$Length)   #where  the "x_nw$Length" is a data.frame with a collum called "lenght" which contains the gene lengths corresponding to each row in the expression matrix.                              https://support.bioconductor.org/p/99142/
+myDGEList_OLIVER
+ #$counts
+ # Pim1  Pim2  Pim3  Pi1  Pi2   Pi3
+ #$samples
+  #$genes
+
+myDGEList_OLIVER_norm <- calcNormFactors(myDGEList_OLIVER)
+#An object of class "DGEList"
+ #$counts
+#$samples
+#     group  lib.size norm.factors
+#
+ #$genes
+
+rpkmMatrix_OLIVER <- rpkm(myDGEList_OLIVER_norm, x_OLIVER$Length)
+head(rpkmMatrix_OLIVER)
+
+rpkmMatrix_OLIVER_log <- rpkm(myDGEList_OLIVER_norm, x_OLIVER$Length, log=TRUE)
+dim(rpkmMatrix_OLIVER_log)
+head(rpkmMatrix_OLIVER_log)
+
+
+fpkm_OLIVER_log<-(rpkmMatrix_OLIVER_log)/2          #as paired end
+dim(fpkm_OLIVER_log)
+
+write.table(data.frame("ensembl_gene_id"=a_OLIVER, fpkm_OLIVER_log),"OLIVER_TOM_FPKM_LOG.txt", quote=FALSE, row.names=F, sep="\t")
+system("grep -c '^[^ensembl_gene_id]' OLIVER_TOM_FPKM_LOG.txt")
+#33810
+
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/TOM_PI_MERGE_GSE33177_OLIVER_JOECYLN")
+##################################################################################################################################################################
+
+###########DATA3. Now to process Ilummina data of JOCELYN and convert count to fpkm######################
+# changeworking directory
+########################################################################################################
+
+system("(head -n 1 JOCELYN_READ_DATA.txt && tail -n +2 JOCELYN_READ_DATA.txt | sort -u) >JOCELYN_READ_DATA_nw.txt")
+system("grep -c '^[^ensembl_gene_id]' JOCELYN_READ_DATA_nw.txt")
+#20177
+
+system("awk 'NR==FNR{a[$1]=$2; next} ($1 in a) {print $0\"\t\"a[$1]}' FINAL_SOLANUM_LYCOPERSICUM_EXON_LENGTH JOCELYN_READ_DATA_nw.txt >FINAL_JOCELYN_READ_DATA.txt")
+system("grep -c '^[^ensembl_gene_id]' FINAL_JOCELYN_READ_DATA.txt")
+#20013                                                               ####A total of 164 (20177-20013) were lost at this step while matching with the gene length file.
+
+system("awk -F\"\t\" '{print $1\"\t\"$3\"\t\"$4\"\t\"$5\"\t\"$6}' FINAL_JOCELYN_READ_DATA.txt >FINAL_JOCELYN_READ_DATA_nw.txt")
+x_JOCELYN<-read.table("FINAL_JOCELYN_READ_DATA_nw.txt", header=T, sep="\t")
+x_JOCELYN
+head(x_JOCELYN)
+dim(x_JOCELYN)
+#[1] 20013    5
+
+a_JOCELYN<-rownames<-x_JOCELYN[,1]
+a_JOCELYN
+y_JOCELYN<-x_JOCELYN[,-1]
+y_JOCELYN
+dim(y_JOCELYN)
+#[1] 20013    4
+names(x_JOCELYN)   #display header
+names(y_JOCELYN)
+b_JOCELYN<-colnames<- names(y_JOCELYN)
+b_JOCELYN
+#[1] "X48h"   "X96h"   "X144h"  "Length"
+#z<-y[-1,]
+z_JOCELYN<-y_JOCELYN[,-4]
+z_JOCELYN
+dim(z_JOCELYN)
+
+
+###########METHOD I to calculate RPKM############################
+library(edgeR)
+myDGEList_JOCELYN <- DGEList(counts=z_JOCELYN , genes=x_JOCELYN$Length)   #where  the "x_nw$Length" is a data.frame with a collum called "lenght" which contains the gene lengths corresponding to each row in the expression matrix.                              https://support.bioconductor.org/p/99142/
+myDGEList_JOCELYN
+#$counts
+#$samples 
+#$genes
+myDGEList_JOCELYN_norm <- calcNormFactors(myDGEList_JOCELYN)
+rpkmMatrix_JOCELYN <- rpkm(myDGEList_JOCELYN_norm, x_JOCELYN$Length)
+rpkmMatrix_JOCELYN_log <- rpkm(myDGEList_JOCELYN_norm, x_JOCELYN$Length, log=TRUE)
+dim(rpkmMatrix_JOCELYN_log)
+
+fpkm_JOCELYN_log<-(rpkmMatrix_JOCELYN_log)         #single-end reads
+dim(fpkm_JOCELYN_log)
+head(fpkm_JOCELYN_log)
+ 
+
+write.table(data.frame("ensembl_gene_id"=a_JOCELYN, fpkm_JOCELYN_log),"JOCELYN_TOM_FPKM_LOG.txt", quote=FALSE, row.names=F, sep="\t")
+system("grep -c '^[^ensembl_gene_id]' JOCELYN_TOM_FPKM_LOG.txt")
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/TOM_PI_MERGE_GSE33177_OLIVER_JOECYLN")
+
+##################################################################################################################################################################
+#Merging of the three data (DATA1, DATA2, DATA3) of Tomato vs Phytophthora infestans
+##################################################################################################################################################################
+
+system("bash -c 'join <(sort FINAL_TOMATO_PI_EXPR_IDs_6966.txt) <(sort OLIVER_TOM_FPKM_LOG.txt) | join - <(sort JOCELYN_TOM_FPKM_LOG.txt)' | sed \"s/ /\t/g\" >COMM_EXPRS_PI_TOM_IDs.txt")
+
+system("grep -c '^[^ensembl_gene_id]' COMM_EXPRS_PI_TOM_IDs.txt")
+#6290
+comm_TOM_PI_expr<-read.table("COMM_EXPRS_PI_TOM_IDs.txt", row.names=1, header=T, sep="\t")
+comm_TOM_PI_expr
+dim(comm_TOM_PI_expr)
+#[1] 6290   10
+class(comm_TOM_PI_expr)
+#[1] "data.frame"
+head(comm_TOM_PI_expr)
+rownames(comm_TOM_PI_expr)
+
+
+system("awk -F\"\t\" '{print $1\"\t\"$2\"\t\"$3\"\t\"$4\"\t\"$5}' COMM_EXPRS_PI_TOM_IDs.txt >object_GSE33177.txt")
+system("grep -c '^[^ensembl_gene_id]' object_GSE33177.txt")
+#6290
+system("awk -F\"\t\" '{print $1\"\t\"$6\"\t\"$7\"\t\"$8}' COMM_EXPRS_PI_TOM_IDs.txt >object_OLIVER.txt")
+system("grep -c '^[^ensembl_gene_id]' object_OLIVER.txt")
+#6290
+system("awk -F\"\t\" '{print $1\"\t\"$9\"\t\"$10\"\t\"$11}' COMM_EXPRS_PI_TOM_IDs.txt >object_JOCELYN.txt")
+system("grep -c '^[^ensembl_gene_id]' object_JOCELYN.txt")
+#6290
+
+object_GSE33177_expr<-read.table("object_GSE33177.txt", row.names=1, header=T, sep="\t")
+head(object_GSE33177_expr)
+class(object_GSE33177_expr)
+#[1] "data.frame"
+dim(object_GSE33177_expr)
+
+object_OLIVER_expr<-read.table("object_OLIVER.txt", row.names=1, header=T, sep="\t")
+head(object_OLIVER_expr)
+class(object_OLIVER_expr)
+#[1] "data.frame"
+dim(object_OLIVER_expr)
+
+object_JOCELYN_expr<-read.table("object_JOCELYN.txt", row.names=1, header=T, sep="\t")
+head(object_JOCELYN_expr)
+class(object_JOCELYN_expr)
+#[1] "data.frame"
+dim(object_JOCELYN_expr)
+
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/TOM_PI_MERGE_GSE33177_OLIVER_JOECYLN")
+
+
+object_GSE33177<-new("ExpressionSet", exprs=as.matrix(object_GSE33177_expr))
+object_GSE33177
+#ExpressionSet (storageMode: lockedEnvironment)
+class(object_GSE33177)
+#[1] "ExpressionSet"
+#attr(,"package")
+#[1] "Biobase"
+head(exprs(object_GSE33177))
+
+object_OLIVER<-new("ExpressionSet", exprs=as.matrix(object_OLIVER_expr))
+object_OLIVER
+#ExpressionSet (storageMode: lockedEnvironment)
+class(object_OLIVER)
+#[1] "ExpressionSet"
+#attr(,"package")
+#[1] "Biobase"
+head(exprs(object_OLIVER))
+
+
+object_JOCELYN<-new("ExpressionSet", exprs=as.matrix(object_JOCELYN_expr))
+object_JOCELYN
+#ExpressionSet (storageMode: lockedEnvironment)
+class(object_JOCELYN)
+#[1] "ExpressionSet"
+#attr(,"package")
+#[1] "Biobase"
+head(exprs(object_JOCELYN))
+
+png(file = "BOXPLOT_GSE33177_OLIVER_JOCELYN_un_vs_norm.png", width = 5, height = 7, units = "in", res = 300)
+par(mfrow=c(3,2), oma=c(4, 4, 4, 4))
+boxplot(GSE33177_unnorm, las = 2, col = 3:10, main = "Unnormalized data (GSE33177)", horizontal=FALSE, cex.axis=0.6, cex.main=0.7, outline = FALSE)
+boxplot(eset_GCRMA_TOMATO_PI_EXPRS, las = 2, col = 3:10, main = "Normalized data (GSE33177)",  horizontal=FALSE, cex.axis=0.6, cex.main=0.7,outline = FALSE)
+boxplot(z_OLIVER, las = 2, col = 3:10, main = "Unnormalized data (PRJEB21223)",  horizontal=FALSE, cex.axis=0.6, cex.main=0.7,outline = FALSE)
+boxplot(fpkm_OLIVER_log, las = 2, col = 3:10, main = "Normalized data (PRJEB21223)", horizontal=FALSE, cex.axis=0.6, cex.main=0.7, outline = FALSE)
+boxplot(z_JOCELYN, las = 2, col = 3:10, main = "Unnormalized data (SRP041501)",  horizontal=FALSE, cex.axis=0.6, cex.main=0.7,outline = FALSE)
+boxplot(fpkm_JOCELYN_log, las = 2, col = 3:10, main = "Normalized data (SRP041501)", horizontal=FALSE, cex.axis=0.6, cex.main=0.7, outline = FALSE)
+dev.off()
+
+png(file = "SHIVA.png", width = 5, height = 7, units = "in", res = 300)
+par(mfrow=c(3,2), oma=c(4, 4, 4, 4))
+plot((density(GSE33177_unnorm)), xlab = "Log (base 2) intensities", ylab="density", main = "Unormalized data (GSE33177)", cex.axis=0.6, cex.lab=0.6, cex.main=0.7)
+polygon((density(GSE33177_unnorm)), col="purple", border="blue")
+plot((density(eset_GCRMA_TOMATO_PI_EXPRS)), xlab = "Log (base 2) intensities", ylab="density", main = "Normalized data (GSE33177)", cex.axis=0.6, cex.lab=0.6, cex.main=0.7)
+polygon((density(eset_GCRMA_TOMATO_PI_EXPRS)), col="purple", border="blue")
+
+plot((density(z_OLIVER)), na.rm=TRUE, xlab = "Log (base 2) intensities", ylab="density", main = "Unormalized data (PRJEB21223)", cex.axis=0.6, cex.lab=0.6, cex.main=0.7)
+polygon((density(z_OLIVER)), col="purple", border="blue")
+
+plot((density(fpkm_OLIVER_log)), xlab = "Log (base 2) intensities", ylab="density", main = "Normalized data (PRJEB21223)", cex.axis=0.6, cex.lab=0.6, cex.main=0.7)
+polygon((density(fpkm_OLIVER_log)), col="purple", border="blue")
+
+
+plot((density(z_JOCELYN)), xlab = "Log (base 2) intensities", ylab="density", main = "Unormalized data (SRP041501)", cex.axis=0.6, cex.lab=0.6, cex.main=0.7)
+polygon((density(z_JOCELYN)), col="purple", border="blue")
+plot((density(fpkm_JOCELYN_log)), xlab = "Log (base 2) intensities", ylab="density", main = "Normalized data (SRP041501)", cex.axis=0.6, cex.lab=0.6, cex.main=0.7)
+polygon((density(fpkm_JOCELYN_log)), col="purple", border="blue")
+dev.off()
+##################################################################################################################3333
+
+library("frma")
+library(inSilicoMerging) #merging need immediate calling of libraries "frma" and "inSilicoMerging"
+esets_PI_EXPRS_data = list(object_GSE33177, object_OLIVER, object_JOCELYN)
+esets_PI_EXPRS_data_GENENORM = merge(esets_PI_EXPRS_data, method="GENENORM")
+#m1 <- merge(x=GSE71428_data_nw,y=GSE75923_data_nw,by.x = c("ensembl_gene_id"),by.y = c("ensembl_gene_id"),all.y = TRUE)
+#exporttab <- merge(x=GSE71428_data_nw, y=GSE75923_data_nw, by.x='ensembl_gene_id', by.y='ensembl_gene_id', fill=-9999)
+
+#  INSILICOMERGING: Run COMBAT...
+#  INSILICOMERGING:   => Found 3 batches
+#  INSILICOMERGING:   => Found 0 covariate(s)
+head(exprs(esets_PI_EXPRS_data_GENENORM))
+
+dim(exprs(esets_PI_EXPRS_data_GENENORM))
+#[1] 6290    10
+esets_PI_EXPRS_data_NONE = merge(esets_PI_EXPRS_data, method="NONE") 
+#INSILICOMERGING: Run with no additional merging technique...
+esets_PI_EXPRS_data_NONE  
+head(exprs(esets_PI_EXPRS_data_NONE))
+
+dim(exprs(esets_PI_EXPRS_data_NONE))
+#[1] 6290   10
+
+
+png(file = "BOXPLOT_MERGE_TOM_PI_EXPRS.png", width = 5, height = 4, units = "in", res = 300)
+par(mfrow = c(1,2))
+boxplot(exprs(esets_PI_EXPRS_data_NONE), las = 2, col = 3:10, main = "NONE", horizontal=FALSE, cex.axis=0.4, cex.main=0.7, outline = FALSE)
+boxplot(exprs(esets_PI_EXPRS_data_GENENORM), las = 2, col = 3:10, main = "GENENORM",  horizontal=FALSE, cex.axis=0.4, cex.main=0.7,outline = FALSE)
+dev.off()
+
+png(file = "BOXPLOT_MERGE_TOM_AS_EXPRS_nw.png", width = 5, height = 4, units = "in", res = 300)
+par(mfrow = c(1,2))
+boxplot(exprs(esets_AS_EXPRS_data_NONE), las = 2, col = 3:10, main = "NONE", horizontal=FALSE, cex.axis=0.4, cex.main=0.7, outline = FALSE)
+boxplot(exprs(esets_AS_EXPRS_data_GENENORM), las = 2, col = 3:10, main = "GENENORM",  horizontal=FALSE, cex.axis=0.4, cex.main=0.7,outline = FALSE)
+dev.off()
+
+
+###########################EXPRESSION FILES OF TOMATO DATASETS against Alternaria Solani and Phytophtora infEstans ###########################################################################################################
+TOM_AS_EXPRS<-(COMM_EXPRS_TOM_AS_PI[c(1:3)])
+dim(TOM_AS_EXPRS)                          #[1] 6198    4
+class(TOM_AS_EXPRS) #[1] "data.frame"
+head(TOM_AS_EXPRS)
+
+TOM_PI_EXPRS<-(COMM_EXPRS_TOM_AS_PI[c(4:13)])
+dim(TOM_PI_EXPRS)                      # [1] 6198    10
+class(TOM_PI_EXPRS) #[1] "data.frame"
+head(TOM_PI_EXPRS)
+
+
+VAR_TOM_AS_EXPRS<-apply(TOM_AS_EXPRS, 1, var)       #"1", showing that we want to apply the variance command across rows (genes/probesets)
+VAR_TOM_AS_EXPRS
+head(VAR_TOM_AS_EXPRS)
+dim(VAR_TOM_AS_EXPRS)
+#NULL
+VAR_TOM_PI_EXPRS<-apply(TOM_PI_EXPRS, 1, var)
+VAR_TOM_PI_EXPRS
+head(VAR_TOM_PI_EXPRS)
+dim(VAR_TOM_PI_EXPRS)
+#NULL
+##################IDENTIFICATION OF DIFFERENTIAL EXPRESSION GENES BETWEEN TWO FUNGAL DISEASES####################################################################################################################
+
+id.var.zero <- union(which(VAR_TOM_AS_EXPRS==0 ), which( VAR_TOM_PI_EXPRS==0 ))
+id.var.zero                                                             #0
+rownames(COMM_EXPRS_TOM_AS_PI[id.var.zero,])
+
+id.var.zero_0.7 <-union(which(VAR_TOM_AS_EXPRS<0.7), which(VAR_TOM_PI_EXPRS<0.7)) #6027
+AS_PI_COMM_filter_0.7 <- COMM_EXPRS_TOM_AS_PI[ -id.var.zero_0.7, ]
+dim(AS_PI_COMM_filter_0.7)           #[1] 840  14
+
+#  It has been shown that for certain ranges of threshold values for means or variances of gene expressions (or their base two logarithms) filtering increases sensitivity of discovery of DEGs  #http://www.biomedcentral.com/1471-2105/14/101
+
+#The ORFs whose expression values across the time points had mean or variance in the lower 25% of the data were removed by this filtering step. http://genome.cshlp.org/content/9/11/1106.long
+
+t.test.gene.1 = t.test(AS_PI_COMM_filter_0.7[,c(1:4)], AS_PI_COMM_filter_0.7[,c(5:14)], "two.sided")
+
+
+
+
+p.value.all.genes = apply(AS_PI_COMM_filter_0.7, 1, function(x) { t.test(x[1:4], x[5:14]) $p.value } )
+#write.table(p.value.all.genes,file="DEGs_AS_PI_p-value_nw.txt",row.names=T, sep="\t", quote=FALSE, col.names= "p-value")
+write.table(data.frame("ensembl_gene_ids"=rownames(AS_PI_COMM_filter_0.7), p.value.all.genes), "DEGs_AS_PI_p-value.txt", quote=FALSE, row.names=F, sep="\t",  col.names=c("ensembl_gene_ids", "p-value"))
+
+genes.present<-rownames(AS_PI_COMM_filter_0.7) #1279
+pvals.present = p.value.all.genes[genes.present]
+fdr.pvals.present = p.adjust(pvals.present, method="fdr")                          #Use this list of p-values to get a corresponding list of FDR p-values. 
+fdr.pvals.present.sorted = fdr.pvals.present[order(fdr.pvals.present)]             #Sort all of our FDR_corrected p-values to get lowest values 
+fdr.pvals.present.sorted[1:10]   
+
+
+
+#write.table(fdr.pvals.present.sorted,file="DEGs_AS_PI_FDR_p-value_nw.txt", sep="\t", quote=FALSE, col.names="adjusted_p-value")
+#@@@@@@@@Method 1
+df<-as.data.frame(fdr.pvals.present.sorted)
+write.table(data.frame("ensembl_gene_ids"=rownames(df),df),"DEGs_AS_PI_FDR_p-value_method1.txt", quote=FALSE, sep="\t", row.names=FALSE)
+#@@@@@@@@Method 
+write.table(data.frame("ensembl_gene_ids"=rownames(as.data.frame(fdr.pvals.present.sorted)),fdr.pvals.present.sorted),"DEGs_AS_PI_FDR_p-value_method2.txt", quote=FALSE, sep="\t", row.names=FALSE)
+
+                                                  #Look at the 10 lowest p-values
+expression.plus.pvals = cbind(genes.present, pvals.present,fdr.pvals.present)
+write.table(expression.plus.pvals, "DEGs_AS_PI_EXPRS_FDR_p-value.txt", sep="\t", quote=FALSE, row.names=F)
+
+DEG_AS_PI_DATA = names(fdr.pvals.present[fdr.pvals.present <= 0.05])  #Get 2 lists (one for each tissue) of gene IDs that have a raw p-value < 0.01 and are "present" on at least one chip
+DEG_AS_PI_DATA #765 (840-765=75 genes lost with not significant p-value)
+write.table(DEG_AS_PI_DATA, file="DEG_AS_PI_765_significant.txt", sep="\t", row.names=F, col.names=F)
+
+AS_PI_COMM_filter_0.7[match(DEG_AS_PI_DATA, rownames(AS_PI_COMM_filter_0.7)),]->DEGS_AS_PI_EXPRS_DATA #Get the expression data (log2 ratios) for these DEGs
+head(DEGS_AS_PI_EXPRS_DATA)
+dim(DEGS_AS_PI_EXPRS_DATA) #[1] 765  14
+write.table(data.frame("ensembl_gene_ids"=rownames(DEGS_AS_PI_EXPRS_DATA), DEGS_AS_PI_EXPRS_DATA), "DEGS_AS_PI_EXPRESSION_DATA.txt", quote=FALSE, sep="\t", row.names=FALSE)
+
+###PLOT DEGs heatmap############################################################################################################################################################################
+library("gplots")
+library(RColorBrewer)
+png("Heatmap_AS_PI_DEGs.png", width =5, height = 5, units = 'in', res = 300)
+par(oma=c(2,0,0,0))
+heatmap.2(as.matrix(DEGS_AS_PI_EXPRS_DATA), col=redgreen(75), margins = c(7,2), xlab = "SAMPLES", ylab = "GENES", labRow = "", scale="row", key=TRUE,  keysize = 1, key.par = list(cex=0.5), symkey=FALSE, density.info="none", sepcolor="white", trace="none",  cexCol=0.5, cexRow=0.2)
+#heatmap.2(as.matrix(DEGS_AS_PI_EXPRS_DATA), col=redgreen(75), xlab = "SAMPLES", ylab = "GENES", labRow = "", scale="row", key=TRUE, symkey=FALSE, density.info="none", sepcolor="white", trace="none",  cexCol=0.5, cexRow=0.2)
+dev.off()
+
+png("Heatmap_AS_PI_DEGs_bluegreen.png", width =5, height = 5, units = 'in', res = 300)
+par(oma=c(2,0,0,0))
+heatmap.2(as.matrix(DEGS_AS_PI_EXPRS_DATA), col=topo.colors(100), margins = c(7,2), xlab = "SAMPLES", ylab = "GENES", labRow = "", scale="row", key=TRUE,  keysize = 1, key.par = list(cex=0.5), symkey=FALSE, density.info="none", sepcolor="white", trace="none",  cexCol=0.5, cexRow=0.2)
+#heatmap.2(as.matrix(DEGS_AS_PI_EXPRS_DATA), col=redgreen(75), xlab = "SAMPLES", ylab = "GENES", labRow = "", scale="row", key=TRUE, symkey=FALSE, density.info="none", sepcolor="white", trace="none",  cexCol=0.5, cexRow=0.2)
+dev.off()
+
+#heatmap(exprs(esetSel), col=topo.colors(100), ColSideColors=patientcolors)
+
+
+hclustfunc <- function(x) hclust(x, method="complete")
+distfunc <- function(x) dist(x, method="euclidean")
+
+cl.row <- hclustfunc(distfunc(as.matrix(DEGS_AS_PI_EXPRS_DATA)))
+cl.col <- hclustfunc(distfunc(t(as.matrix(DEGS_AS_PI_EXPRS_DATA))))
+
+# extract cluster assignments; i.e. k=8 (rows) k=5 (columns)
+gr.row <- cutree(cl.row, 8)
+gr.col <- cutree(cl.col, 5)
+
+# require(RColorBrewer)
+col1 <- brewer.pal(8, "Set1")
+col2 <- brewer.pal(5, "Pastel1")
+
+# without any specific color kwy orange red heatmap generated
+png("Heatmap_AS_PI_DEGs_colsidebar.png", width = 4, height = 4, units = 'in', res = 300)
+par(oma=c(2,0,0,0))
+heatmap.2(as.matrix(DEGS_AS_PI_EXPRS_DATA), margins = c(7,2), xlab = "SAMPLES", ylab = "GENES", labRow = "", scale="row", key=TRUE,  keysize = 1, key.par = list(cex=0.5), symkey=FALSE, density.info="none", sepcolor="white", trace="none",  ColSideColors=col2[gr.col], cexCol=0.5, cexRow=0.2)#RowSideColors=col1[gr.row], 
+dev.off()
+
+png("Heatmap_AS_PI_DEGs_col_row_sidebar.png", width = 4, height = 4, units = 'in', res = 300)
+par(oma=c(2,0,0,0))
+heatmap.2(as.matrix(DEGS_AS_PI_EXPRS_DATA), col=redgreen(75), margins = c(7,2), xlab = "SAMPLES", ylab = "GENES", labRow = "", scale="row", key=TRUE,  keysize = 1, key.par = list(cex=0.5), symkey=FALSE, density.info="none", sepcolor="white", trace="none", RowSideColors=col1[gr.row], ColSideColors=col2[gr.col], cexCol=0.5, cexRow=0.2)
+dev.off()
+png("Heatmap_AS_PI_DEGs_col_row_sidebar_bluegreen.png", width = 4, height = 4, units = 'in', res = 300)
+par(oma=c(2,0,0,0))
+heatmap.2(as.matrix(DEGS_AS_PI_EXPRS_DATA), col=topo.colors(100), margins = c(7,2), xlab = "SAMPLES", ylab = "GENES", labRow = "", scale="row", key=TRUE,  keysize = 1, key.par = list(cex=0.5), symkey=FALSE, density.info="none", sepcolor="white", trace="none", RowSideColors=col1[gr.row], ColSideColors=col2[gr.col], cexCol=0.5, cexRow=0.2)
+dev.off()
+png("Heatmap_AS_PI_DEGs_colsidebar.png", width = 4, height = 4, units = 'in', res = 300)
+par(oma=c(2,0,0,0))
+heatmap.2(as.matrix(DEGS_AS_PI_EXPRS_DATA), col=topo.colors(100), margins = c(7,2), xlab = "SAMPLES", ylab = "GENES", labRow = "", scale="row", key=TRUE,  keysize = 1, key.par = list(cex=0.5), symkey=FALSE, density.info="none", sepcolor="white", trace="none",  ColSideColors=col2[gr.col], cexCol=0.5, cexRow=0.2)#RowSideColors=col1[gr.row], 
+dev.off()
+
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/TOM_PI_MERGE_GSE33177_OLIVER_JOECYLN")
+
+###PLOT DEGs heatmap############################################################################################################################################################################
+read.table(file="DEGS_AS_PI_EXPRESSION_DATA.txt",header=T, row.names=1)->heatmap_AS_PI_DEGs
+heatmap_AS_PI_DEGs
+head(heatmap_AS_PI_DEGs)
+class(heatmap_AS_PI_DEGs)
+#[1] "data.frame"
+dim(heatmap_AS_PI_DEGs)
+#[1] 765  14
+#PCA plot by ggbiplot #https://github.com/vqv/ggbiplot
+library(devtools)
+ install_github("vqv/ggbiplot")
+library(ggbiplot)
+data(wine)
+groups <- c(rep("Alternaria solani", 4), rep("Phytophthora infestans", 10))
+DEGs_transpose<-as.matrix(t(heatmap_AS_PI_DEGs))
+p_DEGs <- prcomp(DEGs_transpose, scale.=TRUE)
+
+png("PCA_DEGs_AS_PI_ggbiplot_with_label.png", width =5, height = 4, units = 'in', res = 300)
+ggbiplot(p_DEGs, scale = 1, obs.scale = 1, groups = groups, ellipse = TRUE, labels=rownames(mtcars),labels.size=1.5, legend='top', varname.abbrev = FALSE,var.axes = FALSE,legend.position = "top", pc.biplot =TRUE,var.scale = 1, circle = TRUE) +
+scale_color_manual(name="", values=c("orange", "purple")) +  
+scale_shape_manual(name="", values=c(21:25)) +
+geom_point(aes(colour=groups, shape=groups), size = 3) +
+theme(legend.direction ="horizontal", 
+      legend.position = "top")
+dev.off()
+
+
+png("PCA_DEGs_AS_PI_ggbiplot_without_label.png", width =5, height = 4, units = 'in', res = 300)
+ggbiplot(p_DEGs, scale = 1, obs.scale = 1, groups = groups, ellipse = TRUE, legend='top', varname.abbrev = FALSE,var.axes = FALSE,legend.position = "top", pc.biplot =TRUE,var.scale = 1, circle = TRUE) +
+scale_color_manual(name="", values=c("orange", "purple")) +  
+scale_shape_manual(name="", values=c(21:25)) +
+geom_point(aes(colour=groups, shape=groups), size = 3) +
+theme(legend.direction ="horizontal", 
+      legend.position = "top")
+dev.off()
+
+#########PCA with out transpose#############333
+gp <- c(rep("Alternaria solani", 4), rep("Phytophthora infestans", 10))
+DEGs<-as.matrix((heatmap_AS_PI_DEGs))
+pca <- prcomp(DEGs, scale.=TRUE)
+png("PCA_DEGs_AS_PI.png", width =5, height = 4, units = 'in', res = 300)
+ggbiplot(pca, scale = 1, obs.scale = 1,ellipse = TRUE, legend='top', varname.abbrev = FALSE,var.axes = FALSE,legend.position = "top", pc.biplot =TRUE,var.scale = 1, circle = TRUE) +
+scale_color_manual(name="", values=c("orange", "purple")) +  
+scale_shape_manual(name="", values=c(21:25)) +
+#geom_point(aes(colour=gp, shape=gp), size = 3) +
+theme(legend.direction ="horizontal", 
+      legend.position = "top")
+dev.off()
+
+###Predict PCs by projecting the new data using the predict.prcomp function
+pred.Alternaria_solani <- predict(pca_DEGs, new.Alternaria_solani)
+pred.Phytophthora_infestans <- predict(pca_DEGs, new.Phytophthora_infestans)
+
+###Plot result
+library(ggplot2)
+data(iris)
+SPP <- as.factor(Tdata_for_heatmap_DEGs_FINAL$Species)
+COLOR <- c(4,6)
+PCH <- c(1,16)
+pc <- c(1,2)
+
+png("PCA_DEGs_RASE_CARS.png", width =5, height = 6, units = 'in', res = 300)
+plot(pca_DEGs$x[,pc[1]], pca_DEGs$x[,pc[2]], col=COLOR[SPP], pch=17, cex=1.5, xlab="PC1", ylab="PC2", label = TRUE)
+#points(pred.Alternaria_solani[,pc[1]], pred.Alternaria_solani[,pc[2]], col=2[levels(SPP)=="Alternaria solani"], pch=PCH[2])
+#points(pred.Phytophthora_infestans[,pc[1]], pred.Phytophthora_infestans[,pc[2]], col=COLOR[levels(SPP)=="Phytophthora infestans"], pch=PCH[2])
+legend("top", legend=levels(SPP), col=COLOR, pch=17, cex=1)
+#legend("top", data=iris, colour=Species, col=COLOR, pch=17)
+dev.off()
+save.image("/home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/TOM_PI_MERGE_GSE33177_OLIVER_JOECYLN/1.RData")
+
+#https://github.com/vqv/ggbiplot
+############################################################################################################################################################################
+
+##TWO FUNGAL DISEASE NETWORKS  IN TOMATO FOR CMPARRING EARLYY AND LATE BLIGHT IN TOMMATO  WGCNA_ANALYSIS ############################################################################################
+system("mkdir WGCNA_analysis")
+setwd("/home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/WGCNA_analysis")
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/WGCNA_analysis")
+COMM_DEGs_TOM_AS_PI<-read.table("DEGS_AS_PI_EXPRESSION_DATA.txt",sep="\t", header=TRUE, row.names=1)
+COMM_DEGs_TOM_AS_PI
+dim(COMM_DEGs_TOM_AS_PI) #765 14
+class(COMM_DEGs_TOM_AS_PI) #[1] "data.frame"
+head(COMM_DEGs_TOM_AS_PI)
+
+DEGs_AS_PI_names<-row.names(COMM_DEGs_TOM_AS_PI)
+DEGs_AS_PI_names                                                                                            #765
+
+AS_DEGs_nw<-as.data.frame(t(COMM_DEGs_TOM_AS_PI[,1:4]))
+head(AS_DEGs_nw)
+dim(AS_DEGs_nw)
+class(AS_DEGs_nw)
+#[1] "data.frame"                                                                           #4 765
+PI_DEGs_nw<-as.data.frame(t(COMM_DEGs_TOM_AS_PI[,5:14]))
+head(PI_DEGs_nw)
+dim(PI_DEGs_nw)                                                                     #  [1]  10 765
+class(PI_DEGs_nw)
+#[1] "data.frame" 
+
+COMM_bmc
+
+DEGs_AS_PI_names<-row.names(COMM_bmc)
+DEGs_AS_PI_names                                                                                            #765
+
+AS_DEGs_nw<-as.data.frame(t(COMM_bmc[,1:4]))
+head(AS_DEGs_nw)
+dim(AS_DEGs_nw)
+class(AS_DEGs_nw)
+#[1] "data.frame"                                                                           #4 765
+PI_DEGs_nw<-as.data.frame(t(COMM_bmc[,5:14]))
+head(PI_DEGs_nw)
+dim(PI_DEGs_nw)                                                                     #  [1]  10 765
+class(PI_DEGs_nw)
+#[1] "data.frame" 
+
+ 
+############################################################################################################################################################################
+####Call libraries for WGCNA ANALYSIS##########################################################################################################################################################
+
+library(WGCNA)
+library(Hmisc)
+library(flashClust)
+library(qvalue)
+library(dynamicTreeCut)
+library(impute)
+library(MASS)
+library(class)
+library(cluster)
+library(stats)
+
+
+enableWGCNAThreads()                             #Allowing parallel execution with up to 23 working processes.
+options(stringsAsFactors = FALSE)                #logical: should character vectors be converted to factors?
+####################################################################################################################
+
+
+
+enableWGCNAThreads()                             #Allowing parallel execution with up to 23 working processes.
+options(stringsAsFactors = FALSE)                #logical: should character vectors be converted to factors?
+####################################################################################################################
+
+#Checking data for excessive missing values and identification of outlier microarray samples
+##############################################################################################################################################################
+
+###a.Checking data for excessive missing values in A. solani####################################################################################################
+gsg = goodSamplesGenes(AS_DEGs_nw, verbose = 3);                             #Alternaria solani
+#Flagging genes and samples with too many missing values...
+ # ..step 1
+gsg$allOK                                                                   #TRUE
+
+###b.Checking data for excessive missing values in P. infestans####################################################################################################
+gsg = goodSamplesGenes(PI_DEGs_nw, verbose = 3);                             #Phytophthora infestans
+gsg$allOK   
+                                                                  #TRUE
+
+                                                                #TRUE
+###c.remove outliers in Alternaria solani and phytophthora infestans#################################################################################################################################
+sampleTree_AS_DEGs_nw = flashClust(dist(AS_DEGs_nw), method = "average");
+sampleTree_PI_DEGs_nw = flashClust(dist(PI_DEGs_nw), method = "average");
+#plot(sampleTree_AS_DEGs_nw, main = "Sample clustering to detect outliers", sub="", xlab="", cex.lab = 1.5, cex.axis = 1.5, cex.main = 2)
+png("remove_outlier_AS_PI_DEGs_nw.png", res=300, width = 6, height = 4, units="in");
+par(mfrow=c(1,2))
+par(cex = 0.4);
+plot(sampleTree_AS_DEGs_nw, main = "Sample clustering to detect outliers", sub="", xlab="", cex.lab = 0.5, cex.axis = 0.8, cex.main = 1)
+plot(sampleTree_PI_DEGs_nw, main = "Sample clustering to detect outliers", sub="", xlab="", cex.lab = 0.5, cex.axis = 0.8, cex.main = 1)
+dev.off()
+
+#5.############################################################################################################################################################################################
+#Soft-thresholding selection: analysis of network topology
+#################################################################################################################################################################################################
+powers1=c(seq(1,12,by=1),seq(9, 40, by=2))
+
+#5a.######################################################################################################################################################################################
+#for data set A (Alternaria solani)    
+######################################################################################################################################################################################
+
+RpowerTable_AS = pickSoftThreshold(AS_DEGs_nw, powerVector=powers1)[[2]]
+
+png("beta_mean_conn_AS_DEGs.png", height=4, width = 6, units="in", res=300)
+par(mfrow=c(1,2))
+plot(RpowerTable_AS[,1], -sign(RpowerTable_AS[,3])*RpowerTable_AS[,2],xlab="Soft Threshold (power)",ylab="Scale Free Topology Model Fit,signed R^2",type="n", main = paste("Scale independence"))
+text(RpowerTable_AS[,1], -sign(RpowerTable_AS[,3])*RpowerTable_AS[,2],labels=powers1,cex=0.2,col="red")
+#abline(h=-0.085,col="red")
+plot(RpowerTable_AS[,1], RpowerTable_AS[,5],xlab="Soft Threshold (power)",ylab="Mean Connectivity", type="n", main = paste("Mean connectivity"))
+text(RpowerTable_AS[,1], RpowerTable_AS[,5], labels=powers1, cex=0.2,col="red")
+dev.off()
+
+########################################################################################################################################################################################
+#powers2=c(seq(1,16,by=1))
+RpowerTable_PI = pickSoftThreshold(PI_DEGs_nw, powerVector=powers1)[[2]]
+
+png("beta_mean_conn_PI_DEGs.png", height=4, width = 6, units="in", res=300)
+par(mfrow=c(1,2))
+plot(RpowerTable_PI[,1], -sign(RpowerTable_PI[,3])*RpowerTable_PI[,2],xlab="Soft Threshold (power)",ylab="Scale Free Topology Model Fit,signed R^2",type="n", main = paste("Scale independence"))
+text(RpowerTable_PI[,1], -sign(RpowerTable_PI[,3])*RpowerTable_PI[,2],labels=powers1,cex=0.3,col="red")
+#abline(h=0.92,col="red")
+plot(RpowerTable_PI[,1], RpowerTable_PI[,5],xlab="Soft Threshold (power)",ylab="Mean Connectivity", type="n", main = paste("Mean connectivity"))
+text(RpowerTable_PI[,1], RpowerTable_PI[,5], labels=powers1, cex=0.3,col="red")
+dev.off()
+
+#since the softthreshold was not good as obtained on the basis of toplogy/ expression values, therefore standard threshold was takenwhich is beta=12:
+beta=12# deafult value of beta for both A. solani and P. infestans
+
+#6.Correlating general network properties########################################################################################################################################################
+#6a.Let’s create a scale free topology plot for data set I and dat set II
+#################################################################################################################################################################################################
+
+k.dataOne_AS_DEGs_nw=softConnectivity(AS_DEGs_nw,power=beta)-1
+k.dataTwo_PI_DEGs_nw=softConnectivity(PI_DEGs_nw,power=beta)-1
+
+png("scale_free_topology_plot_AS_vs_PI_12_nw.png", height=4, width = 6, units="in", res=300)
+par(mfrow=c(1,2))
+scaleFreePlot(k.dataOne_AS_DEGs_nw, cex.lab=0.5, cex.main=0.4, main=paste("data set I (A. solani), power=",beta), truncated=F);                 #scaleFreeRsquared slope 1              0.92 -1.41
+scaleFreePlot(k.dataTwo_PI_DEGs_nw, cex.lab=0.5, cex.main=0.4, main=paste("data set II (P. infestans), power=",beta), truncated=F);                #scaleFreeRsquared slope 1              0.93 -1.09
+dev.off()
+
+
+#6b.################################################################################################################################################################################################
+# comparability of two data sets is to correlate measures of average gene expression and overall connectivity between two data sets
+#################################################################################################################################################################################################
+rank_AS_DEGs_nw=rank(rowMeans(t(AS_DEGs_nw)))
+rank_PI_DEGs_nw=rank(rowMeans(t(PI_DEGs_nw)))
+rankConn_AS_DEGs_nw=rank(softConnectivity(AS_DEGs_nw,type="signed",power=beta))
+rankConn_PI_DEGs_nw=rank(softConnectivity(PI_DEGs_nw,type="signed",power=beta))
+
+png("ranked_expression_AS_vs_PI_nw.png", height=4, width = 4, units="in", res=300)
+verboseScatterplot(rank_AS_DEGs_nw,rank_PI_DEGs_nw, xlab="Ranked Expression (AS)", ylab="Ranked Expression (PI)", cex.lab=0.9)
+dev.off()
+
+png("ranked_connectivity_AS_vs_PI_nw.png", height=4, width =4, units="in", res=300)
+verboseScatterplot(rankConn_AS_DEGs_nw,rankConn_PI_DEGs_nw, xlab="Ranked Connectivity (AS)", ylab="Ranked Connectivity (PI)", cex.lab=0.9)
+dev.off()
+
+#Notice three things:
+#1) The correlations are positive and the p-values are significant in all cases. This suggests that the data sets are
+#comparable.
+#2) The correlations and p-values are better for expression than for connectivity. This is consistent with many
+#studies.
+
+# Now we relate whole network connectivity measures in the 2 networks
+png("whole_network_connectivity_AS_vs_PI_nw.png", height=6, width = 6, units="in", res=300)
+verboseScatterplot(k.dataOne_AS_DEGs_nw, k.dataTwo_PI_DEGs_nw,cex.main=0.9, cex.lab=0.9, xlab="Whole Network Connectivity (data I-Alternaria solani)",ylab="Whole Network Connectivity (data II-Phytophthora infestans)",main="k(data I) vs k(data II)")
+dev.off()
+
+######################FINAL NETWORK CONSTRUCTION AND CLUSTERING###########################################################################################################################################################################
+
+adjacency_AS_DEGs = adjacency(AS_DEGs_nw,power=beta,type="signed");
+diag(adjacency_AS_DEGs)=0
+dissTOM_AS_DEGs= 1-TOMsimilarity(adjacency_AS_DEGs, TOMType="signed")
+geneTree_AS_DEGs = flashClust(as.dist(dissTOM_AS_DEGs), method="average")
+
+
+adjacency_PI_DEGs = adjacency(PI_DEGs_nw,power=beta,type="signed");
+diag(adjacency_PI_DEGs)=0
+dissTOM_PI_DEGs= 1-TOMsimilarity(adjacency_PI_DEGs, TOMType="signed")
+geneTree_PI_DEGs = flashClust(as.dist(dissTOM_PI_DEGs), method="average")
+
+
+
+png("dendrogram_AS_PI_DEGs.png",height=6,width=8, units="in", res=300)
+par(mfrow=c(1,2))
+plot(geneTree_AS_DEGs,xlab="",sub="",main="Gene clustering on TOM-based dissimilarity (Alternaria solani)", cex.main=0.9, labels=FALSE,hang=0.04);
+plot(geneTree_PI_DEGs,xlab="",sub="",main="Gene clustering on TOM-based dissimilarity (Phytophthora infestans)", cex.main=0.9,labels=FALSE,hang=0.04);
+dev.off()
+
+mColorh_AS_DEGs=NULL
+for (ds in 0:3){
+tree_AS_DEGs = cutreeHybrid(dendro = geneTree_AS_DEGs, pamStage=FALSE, minClusterSize = (50-3*ds), cutHeight = 0.99, deepSplit = ds, distM = dissTOM_AS_DEGs)
+mColorh_AS_DEGs=cbind(mColorh_AS_DEGs,labels2colors(tree_AS_DEGs$labels));
+}
+
+png("Module_choices_AS_DEGs.png", height=5,width=5, units="in", res=300);
+plotDendroAndColors(geneTree_AS_DEGs, mColorh_AS_DEGs, paste("dpSplt =",0:3), main = "",dendroLabels=FALSE);
+dev.off()
+modules_AS_DEGs= mColorh_AS_DEGs[,2] # (Chosen based on plot below)
+
+colors_AS_DEGs = names(table(modules_AS_DEGs))                #12
+colors_AS_DEGs
+#[1] "blue"      "turquoise"
+																																																																																																																																																																																																																																																																																																																					
+
+mColorh_PI_DEGs=NULL
+for (ds in 0:3){
+tree_PI_DEGs = cutreeHybrid(dendro = geneTree_PI_DEGs, pamStage=FALSE, minClusterSize = (50-3*ds), cutHeight = 0.99, deepSplit = ds, distM = dissTOM_PI_DEGs)
+mColorh_PI_DEGs=cbind(mColorh_PI_DEGs,labels2colors(tree_PI_DEGs$labels));
+}
+
+png("Module_choices_PI_DEGs.png", height=5,width=5, units="in", res=300);
+plotDendroAndColors(geneTree_PI_DEGs, mColorh_PI_DEGs, paste("dpSplt =",0:3), main = "",dendroLabels=FALSE);
+dev.off()
+modules_PI_DEGs= mColorh_PI_DEGs[,2] # (Chosen based on plot below)
+
+colors_PI_DEGs = names(table(modules_PI_DEGs))                #12
+colors_PI_DEGs
+																																																																																																																																																																																																																																																																																																																						
+#[1] "blue"      "brown"     "green"     "grey"      "turquoise" "yellow" 
+
+pdf("Module_choices_AS_PI_DEGs.pdf", height=5,width=8);
+#par(mfrow=c(1,2));
+plotDendroAndColors(geneTree_AS_DEGs, mColorh_AS_DEGs, paste("dpSplt =",0:3), main = "",dendroLabels=FALSE);
+plotDendroAndColors(geneTree_PI_DEGs, mColorh_PI_DEGs, paste("dpSplt =",0:3), main = "",dendroLabels=FALSE);
+dev.off()
+################DIFFERENTIAL NETWORK ANALYSIS OF FUNGAL DISEASE NETWORKS
+multiExpr_DEGs = list(PI_DEGs_2=list(data=PI_DEGs_nw), AS_DEGs_2=list(data=AS_DEGs_nw))
+multiColor_DEGs = list(PI_DEGs_2 = modules_PI_DEGs)
+mp_DEGs=modulePreservation(multiExpr_DEGs,multiColor_DEGs,referenceNetworks=1,verbose=3,networkType="signed", nPermutations=30,maxGoldModuleSize=50,maxModuleSize=200)
+stats_DEGs = mp_DEGs$preservation$Z$ref.PI_DEGs_2$inColumnsAlsoPresentIn.AS_DEGs_2
+stats_DEGs[order(-stats_DEGs[,2]),c(1:2)]
+#          moduleSize Zsummary.pres
+#gold              50    2.15610190
+#blue             136    2.05861765
+#green             61    1.22768649
+#grey              23    0.49853499
+#turquoise        200    0.19684973
+#brown            112    0.11136407
+#yellow            85   -0.02918019
+
+multiExpr_DEGs_nw = list(AS_DEGs_2=list(data=AS_DEGs_nw), PI_DEGs_2=list(data=PI_DEGs_nw))
+multiColor_DEGs_nw = list(AS_DEGs_2 = modules_AS_DEGs)
+mp_DEGs_nw=modulePreservation(multiExpr_DEGs_nw,multiColor_DEGs_nw,referenceNetworks=1,verbose=3,networkType="signed", nPermutations=30,maxGoldModuleSize=50,maxModuleSize=200)
+stats_DEGs_nw = mp_DEGs_nw$preservation$Z$ref.AS_DEGs_2$inColumnsAlsoPresentIn.PI_DEGs_2
+stats_DEGs_nw[order(-stats_DEGs_nw[,2]),c(1:2)]
+ #         moduleSize Zsummary.pres
+#gold              50      2.876382
+#turquoise        200      2.602210
+#blue             200     -1.351943
+
+statsZ_DEGs= cbind(mp_DEGs$quality$Z$ref.PI_DEGs_2$inColumnsAlsoPresentIn.AS_DEGs_2, mp_DEGs$preservation$Z$ref.PI_DEGs_2$inColumnsAlsoPresentIn.AS_DEGs_2)
+statsObs_DEGs = cbind(mp_DEGs$quality$observed$ref.PI_DEGs_2$inColumnsAlsoPresentIn.AS_DEGs_2,mp_DEGs$preservation$observed$ref.PI_DEGs_2$inColumnsAlsoPresentIn.AS_DEGs_2)
+print( cbind(statsObs_DEGs[, c("medianRank.pres", "medianRank.qual")],
+signif(statsZ_DEGs[, c("Zsummary.pres", "Zsummary.qual")], 2)) )
+
+##Plot the preservation stats 
+
+pdf("Modulepreservation_AS_onto_PI_network.pdf",height=8,width=10)
+par(mfrow=c(1,2))
+plotDendroAndColors(geneTree_AS_DEGs, modules_AS_DEGs, "Modules", dendroLabels=FALSE, hang=0.03,addGuide=TRUE, guideHang=0.05, main="Gene dendrogram and module colors (Alternaria solani)")
+plotDendroAndColors(geneTree_PI_DEGs, modules_AS_DEGs, "Modules", dendroLabels=FALSE, hang=0.03,addGuide=TRUE, guideHang=0.05, main="Gene dendrogram and module colors (Phytophthora infestans)")
+dev.off()
+pdf("Modulepreservation_PI_onto_AS_network.pdf",height=8,width=10)
+par(mfrow=c(1,2))
+plotDendroAndColors(geneTree_PI_DEGs, modules_PI_DEGs, "Modules", dendroLabels=FALSE, hang=0.03,addGuide=TRUE, guideHang=0.05, main="Gene dendrogram and module colors (Alternaria solani)")
+plotDendroAndColors(geneTree_AS_DEGs, modules_PI_DEGs, "Modules", dendroLabels=FALSE, hang=0.03,addGuide=TRUE, guideHang=0.05, main="Gene dendrogram and module colors (Phytophthora infestans)")
+dev.off()
+
+statsZ_DEGs= cbind(mp_DEGs$quality$Z$ref.PI_DEGs_2$inColumnsAlsoPresentIn.AS_DEGs_2, mp_DEGs$preservation$Z$ref.PI_DEGs_2$inColumnsAlsoPresentIn.AS_DEGs_2)
+statsObs_DEGs = cbind(mp_DEGs$quality$observed$ref.PI_DEGs_2$inColumnsAlsoPresentIn.AS_DEGs_2,mp_DEGs$preservation$observed$ref.PI_DEGs_2$inColumnsAlsoPresentIn.AS_DEGs_2)
+print( cbind(statsObs_DEGs[, c("medianRank.pres", "medianRank.qual")],
+signif(statsZ_DEGs[, c("Zsummary.pres", "Zsummary.qual")], 2)) )
+ #         medianRank.pres medianRank.qual Zsummary.pres Zsummary.qual
+#blue                    4               1         2.100         23.00
+#brown                   5               4         0.110         19.00
+#gold                    1               6         2.200          0.39
+#green                   3               2         1.200         11.00
+#grey                    4               7         0.500          0.85
+#turquoise               6               5         0.200         22.00
+#yellow                  4               3        -0.029         18.00
+
+modColors_DEGs = rownames(mp_DEGs$preservation$Z$ref.PI_DEGs_2$inColumnsAlsoPresentIn.AS_DEGs_2)
+moduleSizes_DEGs = statsZ_DEGs$moduleSize
+plotMods_DEGs = !(modColors_DEGs %in% c("grey", "gold")); # leave grey and gold modules out
+text_DEGs = modColors_DEGs[plotMods_DEGs]; # text labels for points
+plotData_DEGs = cbind(mp_DEGs$preservation$observed$ref.PI_DEGs_2$inColumnsAlsoPresentIn.AS_DEGs_2[, 2], mp_DEGs$preservation$Z$ref.PI_DEGs_2$inColumnsAlsoPresentIn.AS_DEGs_2[, 2]) 
+mains = c("Preservation Median rank", "Preservation Zsummary");
+
+png(file="modulePreservation-Z-summary.png", width = 5, height = 5, units = 'in', res = 300)
+#par(mfrow = c(1,2))
+#par(mar = c(4.5,4.5,2.5,1))
+for (p in 1:2)
+{
+min = min(plotData_DEGs[, p], na.rm = TRUE);
+max = max(plotData_DEGs[, p], na.rm = TRUE);
+# Adjust ploting ranges appropriately
+if (p==2)
+{
+if (min > -max/10) min = -max/10
+ylim = c(min - 0.1 * (max-min), max + 0.1 * (max-min))
+} else
+ylim = c(max + 0.1 * (max-min), min - 0.1 * (max-min))
+
+plot(moduleSizes_DEGs[plotMods_DEGs], plotData_DEGs[plotMods_DEGs, p], bg = modColors_DEGs[plotMods_DEGs], pch = 21,col= "white", main = mains[p],cex = 5,ylab = mains[p], xlab = "Module size", log = "x",ylim = c(5, 35),xlim = c(10, 2000), cex.lab = 1.2, cex.axis = 1.2, cex.main =1.4) # cex manage size of dots, ylim has been changed from manual
+symbols(x=moduleSizes_DEGs[plotMods_DEGs], plotData_DEGs[plotMods_DEGs, p], circles=moduleSizes_DEGs[plotMods_DEGs], inches=1/5, fg="white", bg=text_DEGs, xlab = "Module size", ylab="Preservation Z-Summary") #cex=0.4, col="black",  fg is for border of circles
+labelPoints(moduleSizes_DEGs[plotMods_DEGs], plotData_DEGs[plotMods_DEGs, p], text_DEGs, cex = 0.8, offs = 0.1); #cex = 1 size of module labels
+
+
+# For Zsummary, add threshold lines
+if (p==2)
+{
+#abline(h=0)
+#abline(h=10, col = "blue", lty = 2)
+abline(h=2, col = "red", lty = 2)
+}
+}
+# If plotting into a file, close it
+dev.off();
+####################################################################################################################################################################################
+multiExpr_DEGs_nw = list(AS_DEGs_2=list(data=AS_DEGs_nw), PI_DEGs_2=list(data=PI_DEGs_nw))
+multiColor_DEGs_nw = list(AS_DEGs_2 = modules_AS_DEGs)
+mp_DEGs_nw=modulePreservation(multiExpr_DEGs_nw,multiColor_DEGs_nw,referenceNetworks=1,verbose=3,networkType="signed", nPermutations=30,maxGoldModuleSize=50,maxModuleSize=200)
+stats_DEGs_nw = mp_DEGs_nw$preservation$Z$ref.AS_DEGs_2$inColumnsAlsoPresentIn.PI_DEGs_2
+stats_DEGs_nw[order(-stats_DEGs_nw[,2]),c(1:2)]
+ #         moduleSize Zsummary.pres
+#gold              50      2.876382
+#turquoise        200      2.602210
+#blue             200     -1.351943
+
+statsZ_DEGs_AS= cbind(mp_DEGs_nw$quality$Z$ref.AS_DEGs_2$inColumnsAlsoPresentIn.PI_DEGs_2, mp_DEGs_nw$preservation$Z$ref.AS_DEGs_2$inColumnsAlsoPresentIn.PI_DEGs_2)
+statsObs_DEGs_AS = cbind(mp_DEGs_nw$quality$observed$ref.AS_DEGs_2$inColumnsAlsoPresentIn.PI_DEGs_2,mp_DEGs_nw$preservation$observed$ref.AS_DEGs_2$inColumnsAlsoPresentIn.PI_DEGs_2)
+print( cbind(statsObs_DEGs_AS[, c("medianRank.pres", "medianRank.qual")],
+signif(statsZ_DEGs_AS[, c("Zsummary.pres", "Zsummary.qual")], 2)) )
+
+          medianRank.pres medianRank.qual Zsummary.pres Zsummary.qual
+blue                    3             2.5          -1.4         100.0
+gold                    1             2.0           2.9           0.2
+turquoise               2             1.5           2.6         120.0
+
+modColors_DEGs = rownames(mp_DEGs_nw$preservation$Z$ref.AS_DEGs_2$inColumnsAlsoPresentIn.PI_DEGs_2)
+moduleSizes_DEGs = statsZ_DEGs_AS$moduleSize
+plotMods_DEGs = !(modColors_DEGs %in% c("grey", "gold")); # leave grey and gold modules out
+text_DEGs = modColors_DEGs[plotMods_DEGs]; # text labels for points
+plotData_DEGs = cbind(mp_DEGs_nw$preservation$observed$ref.AS_DEGs_2$inColumnsAlsoPresentIn.PI_DEGs_2[, 2], mp_DEGs_nw$preservation$Z$ref.AS_DEGs_2$inColumnsAlsoPresentIn.PI_DEGs_2[, 2]) 
+mains = c("Preservation Median rank", "Preservation Zsummary");
+
+png(file="modulePreservation-Z-summary_nwnw.png", width = 5, height = 5, units = 'in', res = 300)
+#par(mfrow = c(1,2))
+#par(mar = c(4.5,4.5,2.5,1))
+for (p in 1:2)
+{
+min = min(plotData_DEGs[, p], na.rm = TRUE);
+max = max(plotData_DEGs[, p], na.rm = TRUE);
+# Adjust ploting ranges appropriately
+if (p==2)
+{
+if (min > -max/10) min = -max/10
+ylim = c(min - 0.1 * (max-min), max + 0.1 * (max-min))
+} else
+ylim = c(max + 0.1 * (max-min), min - 0.1 * (max-min))
+
+plot(moduleSizes_DEGs[plotMods_DEGs], plotData_DEGs[plotMods_DEGs, p], bg = modColors_DEGs[plotMods_DEGs], pch = 21,col= "white", main = mains[p],cex = 5,ylab = mains[p], xlab = "Module size", log = "x",ylim = c(5, 35),xlim = c(10, 2000), cex.lab = 1.2, cex.axis = 1.2, cex.main =1.4) # cex manage size of dots, ylim has been changed from manual
+symbols(x=moduleSizes_DEGs[plotMods_DEGs], plotData_DEGs[plotMods_DEGs, p], circles=moduleSizes_DEGs[plotMods_DEGs], inches=1/5, fg="white", bg=text_DEGs, xlab = "Module size", ylab="Preservation Z-Summary") #cex=0.4, col="black",  fg is for border of circles
+labelPoints(moduleSizes_DEGs[plotMods_DEGs], plotData_DEGs[plotMods_DEGs, p], text_DEGs, cex = 0.8, offs = 0.1); #cex = 1 size of module labels
+
+
+# For Zsummary, add threshold lines
+if (p==2)
+{
+#abline(h=0)
+#abline(h=10, col = "blue", lty = 2)
+abline(h=2, col = "red", lty = 2)
+}
+}
+# If plotting into a file, close it
+dev.off();
+
+##############################3###########################################################################################################################
+##7e. Visualization of module preservation################################################################################################################################################
+plotTOM_AS_DEGs = dissTOM_AS_DEGs^7; #. The main use of the GTOM measures is the identification of network modules (sets of tightly connected nodes). 
+diag(plotTOM_AS_DEGs) = NA;
+
+plotTOM_PI_DEGs = dissTOM_PI_DEGs^7;
+diag(plotTOM_PI_DEGs) = NA;
+
+pdf("Visualizing_the_gene_network_using_a_heatmap_plot_AS_DEGs.pdf",height=8,width=12)
+TOMplot(plotTOM_AS_DEGs, geneTree_AS_DEGs, modules_AS_DEGs, main = "Network heatmap plot, all genes", setLayout = TRUE, ColorsLeft = NULL)
+dev.off()
+
+
+pdf("Visualizing_the_gene_network_using_a_heatmap_plot_PI_DEGs.pdf",height=8,width=12)
+TOMplot(plotTOM_PI_DEGs, geneTree_PI_DEGs, modules_PI_DEGs, main = "Network heatmap plot, all genes")
+dev.off()
+
+#The plots signed correlations, the unsigned correlations, the topological overlap in a signed network, and the topological overlap in the unsigned network. Each column and row of the heatmap corresponds to a single gene; light colors mean low correlations or topological overlaps (negative correlation in signed correlation plots); progressively darker colors correspond to higher correlations or topological overlaps
+
+###8. Module-trait relationship in AS and PI#####################################################################################################################################################
+
+###8a. Relating consensus modules (PI as reference)####################################################################################################################################################
+consensus_match_DEGs<-overlapTable(modules_PI_DEGs, modules_AS_DEGs)      
+consensus_match_DEGs$pTable
+   #                 blue    turquoise
+ # blue      9.999884e-01 2.952846e-05
+ # brown     8.136284e-01 2.498741e-01
+ # green     2.202565e-10 1.000000e+00
+ # grey      2.579094e-05 9.999966e-01
+ # turquoise 9.946586e-01 8.193402e-03
+ # yellow    6.343979e-02 9.609174e-01
+
+consensus_match_DEGs$countTable
+ #         blue turquoise
+#blue        28       108
+#brown       36        76
+#green       45        16
+#grey        18         5
+#turquoise  107       241
+#yellow      37        48
+
+pTable_DEGs<- -log10(consensus_match_DEGs$pTable)
+countTable_DEGs<-consensus_match_DEGs$countTable
+pTable_DEGs[is.infinite(pTable_DEGs)]=1.3*max(pTable_DEGs[is.finite(pTable_DEGs)])
+pTable_DEGs[pTable_DEGs>50]=50
+
+PI_DEGs_Totals=apply(countTable_DEGs, 1, sum)
+AS_DEGs_Totals=apply(countTable_DEGs, 2, sum)
+png("consensus_match_DEGs_AS_PI_DEGs.png", height=5, width=5, units="in", res=300)
+par(mar=c(5,6.4,2.7,1)+0.3)
+labeledHeatmap(Matrix=pTable_DEGs, xLabels=paste(" ", colors_AS_DEGs), yLabels=paste(" ", colors_PI_DEGs), colorLabels=TRUE, xSymbols=paste("AS-", colors_AS_DEGs, ": ", AS_DEGs_Totals, sep=""), ySymbols=paste("PI-", colors_PI_DEGs, ": ", PI_DEGs_Totals, sep=""), textMatrix=countTable_DEGs, colors=blueWhiteRed(100)[50:100], main="Correspodence of PI_DEGs and AS_DEGs consensus modules", cex.text=.4, cex.lab=0.5, cex.main=0.6, setStdMargins=FALSE);
+dev.off()
+###8a. Relating consensus modules (AS as reference)####################################################################################################################################################
+
+consensus_match_DEGs_AS<-overlapTable(modules_AS_DEGs, modules_PI_DEGs) 
+consensus_match_DEGs_AS$pTable
+ #blue     brown        green         grey   turquoise
+#blue      9.999884e-01 0.8136284 2.202565e-10 2.579094e-05 0.994658606
+#turquoise 2.952846e-05 0.2498741 1.000000e+00 9.999966e-01 0.008193402
+#              yellow
+#blue      0.06343979
+#turquoise 0.96091735
+consensus_match_DEGs_AS$countTable
+ #         blue brown green grey turquoise yellow
+#blue        28    36    45   18       107     37
+#turquoise  108    76    16    5       241     48
+
+pTable_DEGs_AS<- -log10(consensus_match_DEGs_AS$pTable)
+countTable_DEGs_AS<-consensus_match_DEGs_AS$countTable
+pTable_DEGs_AS[is.infinite(pTable_DEGs_AS)]=1.3*max(pTable_DEGs_AS[is.finite(pTable_DEGs_AS)])
+pTable_DEGs_AS[pTable_DEGs_AS>50]=50
+
+
+AS_DEGs_Totals_AS=apply(countTable_DEGs_AS, 1, sum)
+PI_DEGs_Totals_AS=apply(countTable_DEGs_AS, 2, sum)
+png("consensus_match_DEGs_AS_PI_DEGs_nwAS.png", height=5, width=5, units="in", res=300)
+par(mar=c(5,6.4,2.7,1)+0.3)
+labeledHeatmap(Matrix=pTable_DEGs_AS, xLabels=paste(" ", colors_PI_DEGs), yLabels=paste(" ", colors_AS_DEGs), colorLabels=TRUE, xSymbols=paste("PI-", colors_PI_DEGs, ": ", PI_DEGs_Totals_AS, sep=""), ySymbols=paste("AS-", colors_AS_DEGs, ": ", AS_DEGs_Totals_AS, sep=""), textMatrix=countTable_DEGs_AS, colors=blueWhiteRed(100)[50:100], main="Correspodence of AS_DEGs and PI_DEGs consensus modules", cex.text=0.4, cex.lab=0.5, cex.main=0.6, setStdMargins=FALSE);
+dev.off()
+#4.##############################################################################################################################################################
+#Loading Phenotypic data
+##############################################################################################################################################################
+traitData_PI = read.table("PI_trait_data.txt", sep='\t', row.names=1, header=TRUE)
+rownames(traitData_PI) 
+head(traitData_PI)
+class(traitData_PI)
+dim(traitData_PI)
+traitData_AS = read.table("AS_trait_data.txt", sep='\t', row.names=1, header=TRUE)
+rownames(traitData_AS) 
+head(traitData_AS)
+class(traitData_AS)
+dim(traitData_AS)
+
+#a. how the clinical traits relate to the sample dendrogram in PUSA BOLD############################################################################################################################
+sampleTree_traitdata_PI = flashClust(dist(PI_DEGs_nw), method = "average")               
+traitColors_PI = numbers2colors(traitData_PI$Time_period, signed = FALSE); # Convert traits to a color representation: white means low, red means high, grey means missing entry
+
+# dendrogram of samples based on their Euclidean distance.
+tiff("traits_relation_to_PI.tiff", width = 4, height = 4, units = 'in', res = 300);
+plotDendroAndColors(sampleTree_traitdata_PI, traitColors_PI, groupLabels = names(traitData_PI), cex.lab=0.6, cex.rowText=0.4, cex.colorLabels=0.4, cex.dendroLabels=0.4,  cex.main=0.5, main = "PI dendrogram and trait heatmap")
+dev.off()
+
+
+
+sampleTree_traitdata_AS = flashClust(dist(AS_DEGs_nw), method = "average")               
+traitColors_AS = numbers2colors(traitData_AS$Time_period, signed = FALSE); # Convert traits to a color representation: white means low, red means high, grey means missing entry
+
+# dendrogram of samples based on their Euclidean distance.
+tiff("traits_relation_to_AS.tiff", width = 4, height = 4, units = 'in', res = 300);
+plotDendroAndColors(sampleTree_traitdata_AS, traitColors_AS, groupLabels = names(traitData_AS), cex.lab=0.6, cex.rowText=0.4, cex.colorLabels=0.4, cex.dendroLabels=0.4,  cex.main=0.5, main = "AS dendrogram and trait heatmap")
+dev.off()
+
+##9b. calculate the principle components#######################################################################################################################################################
+
+##9b.1 calculate the principle components PB#######################################################################################################################################################
+PCs1_PI_NW = moduleEigengenes(PI_DEGs_nw, colors=modules_PI_DEGs)  #ME for module X doing something, there is a good chance that most genes in module X also do that same thing
+ME_1_PI_NW = PCs1_PI_NW$eigengenes
+distPC1_PI_NW = 1-abs(cor(ME_1_PI_NW,use="p"))
+distPC1_PI_NW = ifelse(is.na(distPC1_PI_NW), 0, distPC1_PI_NW)
+pcTree1_PI_NW = hclust(as.dist(distPC1_PI_NW),method="a")
+MDS_1_PI_NW = cmdscale(as.dist(distPC1_PI_NW),2)
+colors_PI_NW = names(table(modules_PI_DEGs))
+
+pdf("ModuleEigengeneVisualizations_PI_NW.pdf",height=6, width=6)
+par(mfrow=c(2,2), mar=c(0, 3, 3, 1) + 0.1, cex=0.6)
+plot(pcTree1_PI_NW, xlab="",ylab="",main="",sub="")
+plot(MDS_1_PI_NW, col= colors_PI_NW, main="MDS plot", xlab="PC1", ylab="PC2", cex=1.5, pch=19)       #where the x-axis is the first PC and the y-axis is the second PC
+for (which.module in names(table(modules_PI_DEGs))){
+ME_PI_NW= ME_1_PI_NW[, paste("ME",which.module, sep="")]
+barplot(ME_PI_NW, col=which.module, main="", cex.main=1, cex.lab=0.6, ylab="eigengene expression",xlab="array sample")
+};
+dev.off();
+
+
+#Step 12: Module membership (kME) and its use in comparing networks###############################################################################################################################
+
+#12a. We first will get the kME values, along with their associated p-values for PB and will then output the resulting table to a file ("kMEtable_PB_NW.csv").#######################################
+geneModuleMembership_PI_NW = signedKME(PI_DEGs_nw, ME_1_PI_NW)
+colnames(geneModuleMembership_PI_NW)=paste("PC",colors_PI_NW,".cor",sep="");
+
+MMPvalue_PI_NW=corPvalueStudent(as.matrix(geneModuleMembership_PI_NW),dim(PI_DEGs_nw)[[2]]);
+colnames(MMPvalue_PI_NW)=paste("PC",colors_PI_NW,".pval",sep="");
+
+Gene= rownames(t(PI_DEGs_nw))
+kMEtable_PI_NW = cbind(Gene,Gene,modules_PI_DEGs)
+
+for (i in 1:length(colors_PI_NW))
+kMEtable_PI_NW = cbind(kMEtable_PI_NW, geneModuleMembership_PI_NW[,i], MMPvalue_PI_NW[,i])
+colnames(kMEtable_PI_NW)=c("PIID","Gene","Module",sort(c(colnames(geneModuleMembership_PI_NW),
+colnames(MMPvalue_PI_NW))))
+write.csv(kMEtable_PI_NW,"kMEtable_PI_NW_24apr2019.csv",row.names=FALSE)
+
+#12b. Now repeat for A2, using the module assignments from A1 to determine kME values.#######################################################################################################
+
+# First calculate MEs for A2, since we haven't done that yet
+PCs1_AS_NW = moduleEigengenes(AS_DEGs_nw, colors=modules_PI_DEGs)
+ME_1_AS_NW = PCs1_AS_NW$eigengenes
+
+geneModuleMembership_AS_NW = signedKME(AS_DEGs_nw, ME_1_AS_NW)
+colnames(geneModuleMembership_PI_NW)=paste("PC",colors_PI_DEGs,".cor",sep="");
+MMPvalue_AS_NW=corPvalueStudent(as.matrix(geneModuleMembership_AS_NW),dim(AS_DEGs_nw)[[2]]);
+colnames(MMPvalue_AS_NW)=paste("PC",colors_PI_DEGs,".pval",sep="");
+kMEtable_AS_NW = cbind(Gene,Gene,modules_PI_DEGs)
+for (i in 1:length(colors_PI_DEGs))
+kMEtable_AS_NW = cbind(kMEtable_AS_NW, geneModuleMembership_AS_NW[,i], MMPvalue_AS_NW[,i])
+colnames(kMEtable_AS_NW)=colnames(kMEtable_PI_NW)
+write.csv(kMEtable_AS_NW,"kMEtable_AS_NW_24APR2019.csv",row.names=FALSE)
+
+
+#12c. The first thing we can do is plot the kME values of each gene in A1 against the corresponding kME values of each gene in A2.###################################################################
+
+
+pdf("all_kMEtable_PI-vs-kMEtable_AS_24APR.pdf",height=8,width=8)
+for (c in 1:length(colors_PI_DEGs)){
+verboseScatterplot(geneModuleMembership_AS_NW[,c],geneModuleMembership_PI_NW[,c],main=colors_PI_DEGs[c],
+xlab="kME in AS",ylab="kME in PI")
+}; dev.off()
+
+#Modules with points showing a high correlation are highly preserved
+
+
+pdf("inModule_kMEtablePI_NW_vs_kMEtable_AS_NW_24APR2019.pdf",height=8,width=8)
+for (c in 1:length(colors_PI_DEGs)){
+inMod = modules_PI_DEGs== colors_PI_DEGs[c]
+verboseScatterplot(geneModuleMembership_AS_NW[inMod,c],geneModuleMembership_PI_NW[inMod,c],main=colors_PI_DEGs[c],
+xlab="kME in AS",ylab="kME in PI")
+}; dev.off()
+
+
+####RESULT : Using only in-module genes (right) is a visual way of assessing hub gene conservation: if these genes show between-set correlation, then the genes in the upper right of the plot are likely to be common hub genes between data sets. (Hub genes are genes that show significant correlation with MEs and high within-module connectivity and will be discussed below.)
+
+
+#9b.1 calculate the principle components PB#######################################################################################################################################################
+PCs1_AS_NW = moduleEigengenes(AS_DEGs_nw, colors=modules_AS_DEGs)  #ME for module X doing something, there is a good chance that most genes in module X also do that same thing
+ME_1_AS_NW = PCs1_AS_NW$eigengenes
+distPC1_AS_NW = 1-abs(cor(ME_1_AS_NW,use="p"))
+distPC1_AS_NW = ifelse(is.na(distPC1_AS_NW), 0, distPC1_AS_NW)
+pcTree1_AS_NW = hclust(as.dist(distPC1_AS_NW),method="a")
+MDS_1_AS_NW = cmdscale(as.dist(distPC1_AS_NW),2)
+colors_AS_NW = names(table(modules_AS_DEGs))
+
+
+pdf("ModuleEigengeneVisualizations_AS_NW.pdf",height=6, width=6)
+par(mfrow=c(2,2), mar=c(0, 3, 3, 1) + 0.1, cex=0.6)
+plot(pcTree1_AS_NW, xlab="",ylab="",main="",sub="")
+plot(MDS_1_AS_NW, col= colors_AS_DEGs, main="MDS plot", xlab="PC1", ylab="PC2", cex=1.5, pch=19)       #where the x-axis is the first PC and the y-axis is the second PC
+ordergenes = geneTree_AS_NW$order
+for (which.module in names(table(modules_AS_DEGs))){
+ME_AS_NW= ME_1_AS_NW[, paste("ME",which.module, sep="")]
+barplot(ME_AS_NW, col=which.module, main="", cex.main=1, cex.lab=0.6, ylab="eigengene expression",xlab="array sample")
+};
+dev.off();
+
+# First calculate MEs for A2, since we haven't done that yet
+PCs1_PI_NW_nw = moduleEigengenes(PI_DEGs_nw, colors=modules_AS_DEGs)
+ME_1_PI_NW_nw = PCs1_PI_NW_nw$eigengenes
+
+geneModuleMembership_PI_NW_nw = signedKME(PI_DEGs_nw, ME_1_PI_NW_nw)
+colnames(geneModuleMembership_PI_NW_nw)=paste("PC",colors_AS_DEGs,".cor",sep="");
+MMPvalue_PI_NW_nw=corPvalueStudent(as.matrix(geneModuleMembership_PI_NW_nw),dim(PI_DEGs_nw)[[2]]);
+colnames(MMPvalue_PI_NW_nw)=paste("PC",colors_AS_DEGs,".pval",sep="");
+kMEtable_PI_NW_nw = cbind(Gene,Gene,modules_AS_DEGs)
+for (i in 1:length(colors_AS_DEGs))
+kMEtable_PI_NW_nw = cbind(kMEtable_PI_NW_nw, geneModuleMembership_PI_NW_nw[,i], MMPvalue_PI_NW_nw[,i])
+colnames(kMEtable_PI_NW_nw)=colnames(kMEtable_AS_NW)
+write.csv(kMEtable_PI_NW_nw,"kMEtable_PI_NW_nw_24APR2019.csv",row.names=FALSE)
+
+
+
+pdf("all_kMEtable_PI-vs-kMEtable_AS_24APR_nwAS.pdf",height=8,width=8)
+for (c in 1:length(colors_AS_DEGs)){
+verboseScatterplot(geneModuleMembership_PI_NW_nw[,c],geneModuleMembership_AS_NW[,c],main=colors_AS_DEGs[c],
+xlab="kME in PI",ylab="kME in AS")
+}; dev.off()
+
+#Modules with points showing a high correlation are highly preserved
+
+
+pdf("inModule_kMEtablePI_NW_vs_kMEtable_AS_NW_24APR2019_nwAS.pdf",height=8,width=8)
+for (c in 1:length(colors_AS_DEGs)){
+inMod = modules_AS_DEGs== colors_AS_DEGs[c]
+verboseScatterplot(geneModuleMembership_PI_NW_nw[inMod,c],geneModuleMembership_AS_NW[inMod,c],main=colors_AS_DEGs[c],
+xlab="kME in PI",ylab="kME in AS")
+}; dev.off()
+
+
+##hubs are not shared between key modules
+#################################################################################################################################################################################################
+
+###7d. Qualitatively and quantitatively measure network preservation at the module level#############################################################################################################
+
+pdf("Combine_Final_modules_AS_PI_DEGs_without_reference_setI.pdf",height=8,width=12)
+plotDendroAndColors(geneTree_AS_DEGs, modules_AS_DEGs, "Modules", dendroLabels=FALSE, hang=0.03, addGuide=TRUE, guideHang=0.05, main="Gene dendrogram and module colors (Alternaria solani)", cex.main=0.7)
+plotDendroAndColors(geneTree_PI_DEGs, modules_PI_DEGs, "Modules", dendroLabels=FALSE, hang=0.03, addGuide=TRUE, guideHang=0.05, main="Gene dendrogram and module colors (Phytophthora infestans)", cex.main=0.7)
+dev.off()
+#12d. The second thing we can do is determine which genes are hubs in both networks by determine which genes have extremely high kME values in both networks.
+topGenesKME = NULL
+for (c in 1:length(colors_PI_DEGs)){
+ kMErank_PI_DEGs = rank(-geneModuleMembership_PI_NW[,c])
+ kMErank_AS_DEGs = rank(-geneModuleMembership_AS_NW[,c])
+ maxKMErank = rank(apply(cbind(kMErank_PI_DEGs,kMErank_AS_DEGs+.00001),1,max))
+topGenesKME = cbind(topGenesKME,Gene[maxKMErank<=10])
+}; colnames(topGenesKME) = colors_PI_DEGs
+topGenesKME
+
+topGenesKME = NULL
+> for (c in 1:length(colors_AS_DEGs)){
++  kMErank_AS_DEGs = rank(-geneModuleMembership_AS_NW[,c])
++ kMErank_PI_DEGs = rank(-geneModuleMembership_PI_NW[,c])
++ maxKMErank = rank(apply(cbind(kMErank_AS_DEGs,kMErank_PI_DEGs+.00001),1,max))
++ topGenesKME = cbind(topGenesKME,Gene[maxKMErank<=10])
++  }; colnames(topGenesKME) = colors_AS_DEGs
+topGenesKME
+      blue             turquoise       
+ #[1,] "Solyc01g065490" "Solyc01g081050"
+ #[2,] "Solyc01g088600" "Solyc02g081730"
+ #[3,] "Solyc02g084950" "Solyc02g084990"
+ #[4,] "Solyc02g088780" "Solyc02g090870"
+ #[5,] "Solyc03g031460" "Solyc03g071620"
+ #[6,] "Solyc05g052030" "Solyc04g071340"
+ #[7,] "Solyc07g066280" "Solyc05g006030"
+ #[8,] "Solyc09g005270" "Solyc06g060340"
+ #[9,] "Solyc09g092520" "Solyc10g047950"
+#[10,] "Solyc12g100140" "Solyc12g098660"
+
+
+
+###8b. Module-trait relationship in PI_NW and AS_NW####################################################################################################################################################
+nGenes_PI_NW = ncol(PI_DEGs_nw)
+nGenes_PI_NW                     #765
+nGenes_AS_NW  = ncol(AS_DEGs_nw)
+nGenes_AS_NW                     #25243
+
+nSamples_PI_NW = nrow(PI_DEGs_nw)
+nSamples_PI_NW                      #10
+nSamples_AS_NW = nrow(AS_DEGs_nw) 
+nSamples_AS_NW                      #4
+
+
+MEs_PI_NW = orderMEs(ME_1_PI_NW)
+moduleTraitCor_PI_NW = cor(MEs_PI_NW, traitData_PI, use = "p");
+moduleTraitPvalue_PI_NW = corPvalueStudent(moduleTraitCor_PI_NW, nSamples_PI_NW);
+
+#sizeGrWindow(10,6)
+# Will display correlations and their p-values
+tiff("Module-trait relationships_PI_NW.tiff",height=4,width=4, units="in", res=300)
+textMatrix_PI_NW = paste(signif(moduleTraitCor_PI_NW, 2), "\n(",
+signif(moduleTraitPvalue_PI_NW, 1), ")", sep = "");
+dim(textMatrix_PI_NW) = dim(moduleTraitCor_PI_NW)
+par(mar = c(6, 8.5, 3, 3));
+# Display the correlation values within a heatmap plot
+labeledHeatmap(Matrix = moduleTraitCor_PI_NW, xLabels = names(traitData_PI), yLabels = names(MEs_PI_NW), ySymbols = names(MEs_PI_NW), colorLabels = FALSE, colors = blueWhiteRed(50),textMatrix = textMatrix_PI_NW, setStdMargins = FALSE, cex.lab=0.5, cex.text = 0.3, cex.main=0.8, zlim = c(-1,1), main = paste("Module-trait relationships PI"))
+dev.off()
+
+
+
+MEs_AS_NW = orderMEs(ME_1_AS_NW)
+moduleTraitCor_AS_NW = cor(MEs_AS_NW, traitData_AS, use = "p");
+moduleTraitPvalue_AS_NW = corPvalueStudent(moduleTraitCor_AS_NW, nSamples_AS_NW);
+
+#sizeGrWindow(10,6)
+# Will display correlations and their p-values
+tiff("Module-trait relationships_AS_NW.tiff",height=4,width=4, units="in", res=300)
+textMatrix_AS_NW = paste(signif(moduleTraitCor_AS_NW, 2), "\n(",
+signif(moduleTraitPvalue_AS_NW, 1), ")", sep = "");
+dim(textMatrix_AS_NW) = dim(moduleTraitCor_AS_NW)
+par(mar = c(6, 8.5, 3, 3));
+# Display the correlation values within a heatmap plot
+labeledHeatmap(Matrix = moduleTraitCor_AS_NW, xLabels = names(traitData_AS), yLabels = names(MEs_AS_NW), ySymbols = names(MEs_AS_NW), colorLabels = FALSE, colors = blueWhiteRed(50),textMatrix = textMatrix_AS_NW, setStdMargins = FALSE, cex.lab=0.4, cex.text = 0.3, cex.main=0.8, zlim = c(-1,1), main = paste("Module-trait relationships AS"))
+dev.off()
+
+#################################################################################################################################################################################################
+#####Pairwise scatterplots of module eigengenes and the trait##################################################################################################
+
+signif(cor(ME_1_AS_NW, use="p"), 2)
+            MEblue MEturquoise
+MEblue           1          -1
+MEturquoise     -1           1
+png("scatterplots_ME_AS_trait.png", height=3, width=3, units="in", res=300)
+plotMEpairs(ME_1_AS_NW, traitData_AS[,1], cex.labels=0.4, cex.main=0.6)
+dev.off()
+
+signif(cor(ME_1_PI_NW, use="p"), 2)
+
+png("scatterplots_ME_PI_trait.png", height=3, width=3, units="in", res=300)
+plotMEpairs(ME_1_PI_NW, traitData_PI[,1], cex.labels=0.4, cex.main=0.6)
+dev.off()
+#################################################################################################################################################################################################
+############################Heatmap of modules#####################################################################################################################################################
+library(gplots)
+for (whichmodule in names(table(modules_AS_DEGs))){
+#whichmodule="black"
+Eigengene_DEGs=ME_1_AS_NW$MEwhichmodule
+datExprModule_AS_DEGs=AS_DEGs_nw[,modules_AS_DEGs==whichmodule]
+file_name = paste("HEATMAP_25APRIL/heatmap_AS/heatmap_AS_DEGs-", whichmodule, ".tiff", sep="")
+#dim(datExprModule_CARS)               #[1] 420 2  
+tiff(file_name, height=6, width=6, units="in", res=300)
+z<-heatmap.2((t(datExprModule_AS_DEGs)), Rowv=T, Colv=T, cexRow=0.2, cexCol=0.5, dendrogram=c("both"), margins=c(8,6), trace="none", sepwidth=c(0.05,0.05), xlab = "Samples", ylab = "Target Genes", key=TRUE, keysize=1, density.info=c("none"), hclustfun= hclust, col=topo.colors(300), scale="row", main=whichmodule)
+dev.off()
+}
+
+
+library(gplots)
+for (whichmodule in names(table(modules_PI_DEGs))){
+#whichmodule="black"
+Eigengene_DEGs=ME_1_PI_NW$MEwhichmodule
+datExprModule_PI_DEGs=PI_DEGs_nw[,modules_PI_DEGs==whichmodule]
+file_name = paste("HEATMAP_25APRIL/heatmap_PI/heatmap_PI_DEGs-", whichmodule, ".tiff", sep="")
+#dim(datExprModule_CARS)               #[1] 420 2  
+tiff(file_name, height=6, width=6, units="in", res=300)
+z<-heatmap.2((t(datExprModule_PI_DEGs)), Rowv=T, Colv=T, cexRow=0.2, cexCol=0.5, dendrogram=c("both"), margins=c(8,6), trace="none", sepwidth=c(0.05,0.05), xlab = "Samples", ylab = "Target Genes", key=TRUE, keysize=1, density.info=c("none"), hclustfun= hclust, col=topo.colors(300), scale="row", main=whichmodule)
+dev.off()
+}
+
+#For single  Heatmap
+x_heatmap=read.table("EXPRS_DEGs_AS_SOLIDs-blue.txt", header=TRUE, sep="\t")
+row.names(x_heatmap)<-x_heatmap$ensembl_gene_ids
+y_heatmap<-x_heatmap[,2:25]
+z_heatmap<-data.matrix(y_heatmap)
+png("dummy.png", height=6.80, width=6.80, units="in", res=500)
+u_heatmap<-heatmap.2(z_heatmap, Rowv=T, Colv=T, dendrogram=c("both"),margins = c(8,4), trace="none", sepwidth=c(0.05,0.05), xlab = "EXPRESSIONS", ylab = "GENES", scale = c("row"), cexRow = 0.3, cexCol = 0.6, key=TRUE, keysize=1,  key.par = list(cex=0.5), density.info=c("none"), hclustfun = hclust, col=topo.colors(300))
+dev.off()
+
+####################################################################################################################################################################################################
+
+#11. Find out the HUB genes based on GS and scale connectivity for Phenotypically  significant modules in RASE ############################################################################
+library(plyr) #http://stackoverflow.com/questions/20084462/how-to-filter-data-frame-with-conditions-of-two-columns
+
+
+Find out the HUB genes based on GS and scale connectivity for Phenotypically  significant modules in RASE ############################################################################
+library(plyr) #http://stackoverflow.com/questions/20084462/how-to-filter-data-frame-with-conditions-of-two-columns
+system("mkdir GS_K_PLOTS")
+system("mkdir GS_K_PLOTS/GS_K_AS")
+system("mkdir GS_K_PLOTS/GS_K_PI")
+
+names(AS_DEGs_nw)[modules_AS_DEGs=="turquoise"]
+names(AS_DEGs_nw)[modules_AS_DEGs=="turquoise"]->POP_AS_DEGs_nw_turquoise
+POP_AS_DEGs_nw_turquoise #494  are the ENTREZ IDS
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+AS_DEGs_nw_turquoise= networkConcepts(AS_DEGs_nw[,POP_AS_DEGs_nw_turquoise], trait=AS_DEGs_nw)
+AS_DEGs_nw_turquoise$Summary 
+AS_DEGs_nw_turquoise$Significance 
+K_AS_DEGs_nw_turquoise=AS_DEGs_nw_turquoise$Connectivity/max(AS_DEGs_nw_turquoise$Connectivity) #This is that should be >0.9 (K is for pink genes)
+GS_AS_DEGs_nw_turquoise=AS_DEGs_nw_turquoise$GS #This is that  should be >0.4 (GS is for all genes 2620)
+png(file = "GS_K_PLOTS/GS_K_AS/GS_vs_K_AS_DEGs_nw_turquoise.png", width = 4, height = 4, units = 'in', res = 300);
+plot(K_AS_DEGs_nw_turquoise, GS_AS_DEGs_nw_turquoise,xlab="K", ylab="Gene Significance", main= paste("Module", ", Hub Gene Significance=", signif(AS_DEGs_nw_turquoise$Significance[2,1],2),sep=""), sub="", cex.main=0.7, cex.lab=0.5);
+abline(0, AS_DEGs_nw_turquoise$Significance[2,1], col=1)
+dev.off()
+
+length(K_AS_DEGs_nw_turquoise) #494
+length(GS_AS_DEGs_nw_turquoise) #494
+as.data.frame(cbind(K_AS_DEGs_nw_turquoise, GS_AS_DEGs_nw_turquoise))->K_GS_AS_DEGs_nw_turquoise 
+class(K_GS_AS_DEGs_nw_turquoise) #data frame
+dim(K_GS_AS_DEGs_nw_turquoise)
+#[1] 494   2
+write.table(K_GS_AS_DEGs_nw_turquoise, file="GS_K_PLOTS/GS_K_AS/turquoise_AS_DEGs_nw_HUBS_K_GS_complete.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+subset(K_GS_AS_DEGs_nw_turquoise, K_AS_DEGs_nw_turquoise >=0.99 & GS_AS_DEGs_nw_turquoise >= 0.99)->turquoise_AS_DEGs_nw_HUBS
+dim(turquoise_AS_DEGs_nw_HUBS)                        #[1] 129   2
+turquoise_AS_DEGs_nw_HUBS
+write.table(turquoise_AS_DEGs_nw_HUBS, file="GS_K_PLOTS/GS_K_AS/turquoise_AS_DEGs_nw_HUBS_K0.99_GS0.99.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+
+
+
+names(AS_DEGs_nw)[modules_AS_DEGs=="blue"]
+names(AS_DEGs_nw)[modules_AS_DEGs=="blue"]->POP_AS_DEGs_nw_blue
+POP_AS_DEGs_nw_blue #271  are the ENTREZ IDS
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+AS_DEGs_nw_blue= networkConcepts(AS_DEGs_nw[,POP_AS_DEGs_nw_blue], trait=AS_DEGs_nw)
+AS_DEGs_nw_blue$Summary 
+AS_DEGs_nw_blue$Significance 
+K_AS_DEGs_nw_blue=AS_DEGs_nw_blue$Connectivity/max(AS_DEGs_nw_blue$Connectivity) #This is that should be >0.9 (K is for pink genes)
+GS_AS_DEGs_nw_blue=AS_DEGs_nw_blue$GS #This is that  should be >0.4 (GS is for all genes 2620)
+png(file = "GS_K_PLOTS/GS_K_AS/GS_vs_K_AS_DEGs_nw_blue.png", width = 4, height = 4, units = 'in', res = 300);
+plot(K_AS_DEGs_nw_blue, GS_AS_DEGs_nw_blue,xlab="K", ylab="Gene Significance", main= paste("Module", ", Hub Gene Significance=", signif(AS_DEGs_nw_blue$Significance[2,1],2),sep=""), sub="", cex.main=0.7, cex.lab=0.5);
+abline(0, AS_DEGs_nw_blue$Significance[2,1], col=1)
+dev.off()
+
+length(K_AS_DEGs_nw_blue) #271
+length(GS_AS_DEGs_nw_blue) #271
+as.data.frame(cbind(K_AS_DEGs_nw_blue, GS_AS_DEGs_nw_blue))->K_GS_AS_DEGs_nw_blue 
+class(K_GS_AS_DEGs_nw_blue) #data frame
+dim(K_GS_AS_DEGs_nw_blue)
+#[1] 271   2
+write.table(K_GS_AS_DEGs_nw_blue, file="GS_K_PLOTS/GS_K_AS/blue_AS_DEGs_nw_HUBS_K_GS_complete.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+subset(K_GS_AS_DEGs_nw_blue, K_AS_DEGs_nw_blue >=0.99 & GS_AS_DEGs_nw_blue >= 0.9)->blue_AS_DEGs_nw_HUBS
+dim(blue_AS_DEGs_nw_HUBS)                        #[1] 262   2
+blue_AS_DEGs_nw_HUBS
+write.table(blue_AS_DEGs_nw_HUBS, file="GS_K_PLOTS/GS_K_AS/blue_AS_DEGs_nw_HUBS_K0.0_GS0.0.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+############################################################################################
+names(PI_DEGs_nw)[modules_PI_DEGs=="blue"]
+names(PI_DEGs_nw)[modules_PI_DEGs=="blue"]->POP_PI_DEGs_nw_blue
+POP_PI_DEGs_nw_blue #136  are the ENTREZ IDS
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+PI_DEGs_nw_blue= networkConcepts(PI_DEGs_nw[,POP_PI_DEGs_nw_blue], trait=PI_DEGs_nw)
+PI_DEGs_nw_blue$Summary 
+PI_DEGs_nw_blue$Significance 
+K_PI_DEGs_nw_blue=PI_DEGs_nw_blue$Connectivity/max(PI_DEGs_nw_blue$Connectivity) #This is that should be >0.9 (K is for pink genes)
+GS_PI_DEGs_nw_blue=PI_DEGs_nw_blue$GS #This is that  should be >0.4 (GS is for all genes 2620)
+png(file = "GS_K_PLOTS/GS_K_PI/GS_vs_K_PI_DEGs_nw_blue.png", width = 4, height = 4, units = 'in', res = 300);
+plot(K_PI_DEGs_nw_blue, GS_PI_DEGs_nw_blue,xlab="K", ylab="Gene Significance", main= paste("Module", ", Hub Gene Significance=", signif(PI_DEGs_nw_blue$Significance[2,1],2),sep=""), sub="", cex.main=0.7, cex.lab=0.5);
+abline(0, PI_DEGs_nw_blue$Significance[2,1], col=1)
+dev.off()
+
+length(K_PI_DEGs_nw_blue) #136
+length(GS_PI_DEGs_nw_blue) #136
+as.data.frame(cbind(K_PI_DEGs_nw_blue, GS_PI_DEGs_nw_blue))->K_GS_PI_DEGs_nw_blue 
+class(K_GS_PI_DEGs_nw_blue) #data frame
+dim(K_GS_PI_DEGs_nw_blue)
+#[1]136   2
+write.table(K_GS_PI_DEGs_nw_blue, file="GS_K_PLOTS/GS_K_PI/blue_PI_DEGs_nw_HUBS_K_GS_complete.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+subset(K_GS_PI_DEGs_nw_blue, K_PI_DEGs_nw_blue >=0.99 & GS_PI_DEGs_nw_blue >= 0.49)->blue_PI_DEGs_nw_HUBS
+dim(blue_PI_DEGs_nw_HUBS)                        #[1] 48   2
+blue_PI_DEGs_nw_HUBS
+write.table(blue_PI_DEGs_nw_HUBS, file="GS_K_PLOTS/GS_K_PI/blue_PI_DEGs_nw_HUBS_K0.99_GS0.49.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+names(PI_DEGs_nw)[modules_PI_DEGs=="yellow"]
+names(PI_DEGs_nw)[modules_PI_DEGs=="yellow"]->POP_PI_DEGs_nw_yellow
+POP_PI_DEGs_nw_yellow #85  are the ENTREZ IDS
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+PI_DEGs_nw_yellow= networkConcepts(PI_DEGs_nw[,POP_PI_DEGs_nw_yellow], trait=PI_DEGs_nw)
+PI_DEGs_nw_yellow$Summary 
+PI_DEGs_nw_yellow$Significance 
+K_PI_DEGs_nw_yellow=PI_DEGs_nw_yellow$Connectivity/max(PI_DEGs_nw_yellow$Connectivity) #This is that should be >0.9 (K is for pink genes)
+GS_PI_DEGs_nw_yellow=PI_DEGs_nw_yellow$GS #This is that  should be >0.4 (GS is for all genes 2620)
+png(file = "GS_K_PLOTS/GS_K_PI/GS_vs_K_PI_DEGs_nw_yellow.png", width = 4, height = 4, units = 'in', res = 300);
+plot(K_PI_DEGs_nw_yellow, GS_PI_DEGs_nw_yellow,xlab="K", ylab="Gene Significance", main= paste("Module", ", Hub Gene Significance=", signif(PI_DEGs_nw_yellow$Significance[2,1],2),sep=""), sub="", cex.main=0.7, cex.lab=0.5);
+abline(0, PI_DEGs_nw_yellow$Significance[2,1], col=1)
+dev.off()
+
+length(K_PI_DEGs_nw_yellow) #85
+length(GS_PI_DEGs_nw_yellow) #85
+as.data.frame(cbind(K_PI_DEGs_nw_yellow, GS_PI_DEGs_nw_yellow))->K_GS_PI_DEGs_nw_yellow 
+class(K_GS_PI_DEGs_nw_yellow) #data frame
+dim(K_GS_PI_DEGs_nw_yellow)
+#[1]85   2
+write.table(K_GS_PI_DEGs_nw_yellow, file="GS_K_PLOTS/GS_K_PI/yellow_PI_DEGs_nw_HUBS_K_GS_complete.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+subset(K_GS_PI_DEGs_nw_yellow, K_PI_DEGs_nw_yellow >=0.99 & GS_PI_DEGs_nw_yellow >= 0.49)->yellow_PI_DEGs_nw_HUBS
+dim(yellow_PI_DEGs_nw_HUBS)                        #[1] 48   2
+yellow_PI_DEGs_nw_HUBS
+write.table(yellow_PI_DEGs_nw_HUBS, file="GS_K_PLOTS/GS_K_PI/yellow_PI_DEGs_nw_HUBS_K0.99_GS0.49.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+
+names(PI_DEGs_nw)[modules_PI_DEGs=="brown"]
+names(PI_DEGs_nw)[modules_PI_DEGs=="brown"]->POP_PI_DEGs_nw_brown
+POP_PI_DEGs_nw_brown #112  are the ENTREZ IDS
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+PI_DEGs_nw_brown= networkConcepts(PI_DEGs_nw[,POP_PI_DEGs_nw_brown], trait=PI_DEGs_nw)
+PI_DEGs_nw_brown$Summary 
+PI_DEGs_nw_brown$Significance 
+K_PI_DEGs_nw_brown=PI_DEGs_nw_brown$Connectivity/max(PI_DEGs_nw_brown$Connectivity) #This is that should be >0.9 (K is for pink genes)
+GS_PI_DEGs_nw_brown=PI_DEGs_nw_brown$GS #This is that  should be >0.4 (GS is for all genes 2620)
+png(file = "GS_K_PLOTS/GS_K_PI/GS_vs_K_PI_DEGs_nw_brown.png", width = 4, height = 4, units = 'in', res = 300);
+plot(K_PI_DEGs_nw_brown, GS_PI_DEGs_nw_brown,xlab="K", ylab="Gene Significance", main= paste("Module", ", Hub Gene Significance=", signif(PI_DEGs_nw_brown$Significance[2,1],2),sep=""), sub="", cex.main=0.7, cex.lab=0.5);
+abline(0, PI_DEGs_nw_brown$Significance[2,1], col=1)
+dev.off()
+
+length(K_PI_DEGs_nw_brown) #112
+length(GS_PI_DEGs_nw_brown) #112
+as.data.frame(cbind(K_PI_DEGs_nw_brown, GS_PI_DEGs_nw_brown))->K_GS_PI_DEGs_nw_brown 
+class(K_GS_PI_DEGs_nw_brown) #data frame
+dim(K_GS_PI_DEGs_nw_brown)
+#[1]112   2
+write.table(K_GS_PI_DEGs_nw_brown, file="GS_K_PLOTS/GS_K_PI/brown_PI_DEGs_nw_HUBS_K_GS_complete.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+subset(K_GS_PI_DEGs_nw_brown, K_PI_DEGs_nw_brown >=0.9 & GS_PI_DEGs_nw_brown >= 0.5)->brown_PI_DEGs_nw_HUBS
+dim(brown_PI_DEGs_nw_HUBS)                        #[1] 48   2
+brown_PI_DEGs_nw_HUBS
+write.table(brown_PI_DEGs_nw_HUBS, file="GS_K_PLOTS/GS_K_PI/brown_PI_DEGs_nw_HUBS_K0.90_GS0.5.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+names(PI_DEGs_nw)[modules_PI_DEGs=="green"]
+names(PI_DEGs_nw)[modules_PI_DEGs=="green"]->POP_PI_DEGs_nw_green
+POP_PI_DEGs_nw_green #61  are the ENTREZ IDS
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+PI_DEGs_nw_green= networkConcepts(PI_DEGs_nw[,POP_PI_DEGs_nw_green], trait=PI_DEGs_nw)
+PI_DEGs_nw_green$Summary 
+PI_DEGs_nw_green$Significance 
+K_PI_DEGs_nw_green=PI_DEGs_nw_green$Connectivity/max(PI_DEGs_nw_green$Connectivity) #This is that should be >0.9 (K is for pink genes)
+GS_PI_DEGs_nw_green=PI_DEGs_nw_green$GS #This is that  should be >0.4 (GS is for all genes 2620)
+png(file = "GS_K_PLOTS/GS_K_PI/GS_vs_K_PI_DEGs_nw_green.png", width = 4, height = 4, units = 'in', res = 300);
+plot(K_PI_DEGs_nw_green, GS_PI_DEGs_nw_green,xlab="K", ylab="Gene Significance", main= paste("Module", ", Hub Gene Significance=", signif(PI_DEGs_nw_green$Significance[2,1],2),sep=""), sub="", cex.main=0.7, cex.lab=0.5);
+abline(0, PI_DEGs_nw_green$Significance[2,1], col=1)
+dev.off()
+
+length(K_PI_DEGs_nw_green) #61
+length(GS_PI_DEGs_nw_green) #61
+as.data.frame(cbind(K_PI_DEGs_nw_green, GS_PI_DEGs_nw_green))->K_GS_PI_DEGs_nw_green 
+class(K_GS_PI_DEGs_nw_green) #data frame
+dim(K_GS_PI_DEGs_nw_green)
+#[1]61   2
+write.table(K_GS_PI_DEGs_nw_green, file="GS_K_PLOTS/GS_K_PI/green_PI_DEGs_nw_HUBS_K_GS_complete.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+subset(K_GS_PI_DEGs_nw_green, K_PI_DEGs_nw_green >=0.9 & GS_PI_DEGs_nw_green >= 0.7)->green_PI_DEGs_nw_HUBS
+dim(green_PI_DEGs_nw_HUBS)                        #[1] 46   2
+green_PI_DEGs_nw_HUBS
+write.table(green_PI_DEGs_nw_HUBS, file="GS_K_PLOTS/GS_K_PI/green_PI_DEGs_nw_HUBS_K0.90_GS0.5.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+names(PI_DEGs_nw)[modules_PI_DEGs=="turquoise"]
+names(PI_DEGs_nw)[modules_PI_DEGs=="turquoise"]->POP_PI_DEGs_nw_turquoise
+POP_PI_DEGs_nw_turquoise #348  are the ENTREZ IDS
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+PI_DEGs_nw_turquoise= networkConcepts(PI_DEGs_nw[,POP_PI_DEGs_nw_turquoise], trait=PI_DEGs_nw)
+PI_DEGs_nw_turquoise$Summary 
+PI_DEGs_nw_turquoise$Significance 
+K_PI_DEGs_nw_turquoise=PI_DEGs_nw_turquoise$Connectivity/max(PI_DEGs_nw_turquoise$Connectivity) #This is that should be >0.9 (K is for pink genes)
+GS_PI_DEGs_nw_turquoise=PI_DEGs_nw_turquoise$GS #This is that  should be >0.4 (GS is for all genes 2620)
+png(file = "GS_K_PLOTS/GS_K_PI/GS_vs_K_PI_DEGs_nw_turquoise.png", width = 4, height = 4, units = 'in', res = 300);
+plot(K_PI_DEGs_nw_turquoise, GS_PI_DEGs_nw_turquoise,xlab="K", ylab="Gene Significance", main= paste("Module", ", Hub Gene Significance=", signif(PI_DEGs_nw_turquoise$Significance[2,1],2),sep=""), sub="", cex.main=0.7, cex.lab=0.5);
+abline(0, PI_DEGs_nw_turquoise$Significance[2,1], col=1)
+dev.off()
+
+length(K_PI_DEGs_nw_turquoise) #348
+length(GS_PI_DEGs_nw_turquoise) #348
+as.data.frame(cbind(K_PI_DEGs_nw_turquoise, GS_PI_DEGs_nw_turquoise))->K_GS_PI_DEGs_nw_turquoise 
+class(K_GS_PI_DEGs_nw_turquoise) #data frame
+dim(K_GS_PI_DEGs_nw_turquoise)
+#[1]348   2
+write.table(K_GS_PI_DEGs_nw_turquoise, file="GS_K_PLOTS/GS_K_PI/turquoise_PI_DEGs_nw_HUBS_K_GS_complete.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+subset(K_GS_PI_DEGs_nw_turquoise, K_PI_DEGs_nw_turquoise >=0.99 & GS_PI_DEGs_nw_turquoise >= 0.99)->turquoise_PI_DEGs_nw_HUBS
+dim(turquoise_PI_DEGs_nw_HUBS)                        #[1] 54   2
+turquoise_PI_DEGs_nw_HUBS
+write.table(turquoise_PI_DEGs_nw_HUBS, file="GS_K_PLOTS/GS_K_PI/turquoise_PI_DEGs_nw_HUBS_K0.99_GS0.99.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+names(PI_DEGs_nw)[modules_PI_DEGs=="turquoise"]
+names(PI_DEGs_nw)[modules_PI_DEGs=="turquoise"]->POP_PI_DEGs_nw_turquoise
+POP_PI_DEGs_nw_turquoise #348  are the ENTREZ IDS
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+#write.table(POP_RASE_DEGs_black, file="ATIDs/ATIDs_RASE/ATIDs_RASE_DEGs_black.txt", row.names=F, col.names=F)
+PI_DEGs_nw_turquoise= networkConcepts(PI_DEGs_nw[,POP_PI_DEGs_nw_turquoise], trait=PI_DEGs_nw)
+PI_DEGs_nw_turquoise$Summary 
+PI_DEGs_nw_turquoise$Significance 
+K_PI_DEGs_nw_turquoise=PI_DEGs_nw_turquoise$Connectivity/max(PI_DEGs_nw_turquoise$Connectivity) #This is that should be >0.9 (K is for pink genes)
+GS_PI_DEGs_nw_turquoise=PI_DEGs_nw_turquoise$GS #This is that  should be >0.4 (GS is for all genes 2620)
+png(file = "GS_K_PLOTS/GS_K_PI/GS_vs_K_PI_DEGs_nw_turquoise.png", width = 4, height = 4, units = 'in', res = 300);
+plot(K_PI_DEGs_nw_turquoise, GS_PI_DEGs_nw_turquoise,xlab="K", ylab="Gene Significance", main= paste("Module", ", Hub Gene Significance=", signif(PI_DEGs_nw_turquoise$Significance[2,1],2),sep=""), sub="", cex.main=0.7, cex.lab=0.5);
+abline(0, PI_DEGs_nw_turquoise$Significance[2,1], col=1)
+dev.off()
+
+length(K_PI_DEGs_nw_turquoise) #348
+length(GS_PI_DEGs_nw_turquoise) #348
+as.data.frame(cbind(K_PI_DEGs_nw_turquoise, GS_PI_DEGs_nw_turquoise))->K_GS_PI_DEGs_nw_turquoise 
+class(K_GS_PI_DEGs_nw_turquoise) #data frame
+dim(K_GS_PI_DEGs_nw_turquoise)
+#[1]348   2
+write.table(K_GS_PI_DEGs_nw_turquoise, file="GS_K_PLOTS/GS_K_PI/turquoise_PI_DEGs_nw_HUBS_K_GS_complete.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+subset(K_GS_PI_DEGs_nw_turquoise, K_PI_DEGs_nw_turquoise >=0.99 & GS_PI_DEGs_nw_turquoise >= 0.99)->turquoise_PI_DEGs_nw_HUBS
+dim(turquoise_PI_DEGs_nw_HUBS)                        #[1] 54   2
+turquoise_PI_DEGs_nw_HUBS
+write.table(turquoise_PI_DEGs_nw_HUBS, file="GS_K_PLOTS/GS_K_PI/turquoise_PI_DEGs_nw_HUBS_K0.99_GS0.99.txt", quote=FALSE, sep="\t", row.names=T, col.names=T)
+
+
+#11b. Output gene lists for use with online software and services##################################################################################################################################
+
+annot_AS_PI_DEGs = read.table(file = "DEGS_AS_PI_EXPRESSION_DATA.txt", header=TRUE, sep="\t");
+#annot_AT_DEGs
+genes_AS_PI_DEGs2annot = match(colnames(AS_DEGs_nw), annot_AS_PI_DEGs$ensembl_gene_ids)
+sum(is.na(genes_AS_PI_DEGs2annot))      #0
+allLLIDs_AS_PI_DEGs_SOLIDs = annot_AS_PI_DEGs$ensembl_gene_ids[genes_AS_PI_DEGs2annot];
+#write.table(allLLIDs_RASE_DEGs_TSIDs, file = "RASE_TSIDs.txt", row.names = FALSE, col.names = FALSE)
+#allLLIDs_RASE_DEGs_ATIDs = annot_AS_PI_DEGs$TSIDs[genes_RASE2annot];
+#write.table(allLLIDs_RASE_DEGs_ATIDs, file = "RASE_ATIDs.txt", row.names = FALSE, col.names = FALSE)
+# $ Choose interesting modules
+#intModules = c("blue", "darkgreen", "turquoise", "royalblue")
+# $ Choose all modules
+
+
+
+#######only SOLIDs of Alternaria solani###################################
+system("mkdir MODULE_SOLIDs_LIST")
+intModules_AS_DEGs=colors_AS_DEGs
+for (module in intModules_AS_DEGs)
+{
+# Select module probes
+modGenes_AS_DEGs_SOLIDs = (modules_AS_DEGs==module)
+#modGenes_RASE_DEGs_ATIDs = (modules_AS_DEGs==module)
+
+#names(RASE_DEGs)[modules_RASE_DEGs=="black"]
+# Get their entrez ID codes
+#modLLIDs_RASE_DEGs_TSIDs = allLLIDs_RASE_DEGs_TSIDs[modGenes_RASE_DEGs_TSIDs];
+modLLIDs_AS_DEGs_SOLIDs = allLLIDs_AS_PI_DEGs_SOLIDs[modGenes_AS_DEGs_SOLIDs];
+# Write them into a file
+#cbind(modLLIDs_RASE_DEGs_TSIDs, modLLIDs_RASE_DEGs_ATIDs)->TSIDs_ATIDs_RASE_DEGs
+fileName = paste("MODULE_SOLIDs_LIST/DEGs_AS_SOLIDs-", module, ".txt", sep="");
+write.table(as.data.frame(modLLIDs_AS_DEGs_SOLIDs), file = fileName,
+row.names = FALSE, col.names = FALSE, quote=FALSE)
+}
+# As background in the enrichment analysis, we will use all probes in the analysis.
+fileName = paste("MODULE_SOLIDs_LIST/DEGs_AS_SOLIDs-all.txt", sep="");
+write.table(as.data.frame(allLLIDs_AS_PI_DEGs_SOLIDs), file = fileName,
+row.names = FALSE, col.names = FALSE, quote=FALSE)
+
+#######only SOLIDs of Phytophthora infestans############################
+intModules_PI_DEGs=colors_PI_DEGs
+for (module in intModules_PI_DEGs)
+{
+# Select module probes
+modGenes_PI_DEGs_SOLIDs = (modules_PI_DEGs==module)
+#modGenes_RASE_DEGs_ATIDs = (modules_PI_DEGs==module)
+
+#names(RASE_DEGs)[modules_RASE_DEGs=="black"]
+# Get their entrez ID codes
+modLLIDs_PI_DEGs_SOLIDs = allLLIDs_AS_PI_DEGs_SOLIDs[modGenes_PI_DEGs_SOLIDs];
+# Write them into a file
+#cbind(modLLIDs_RASE_DEGs_TSIDs, modLLIDs_RASE_DEGs_ATIDs)->TSIDs_ATIDs_RASE_DEGs
+fileName = paste("MODULE_SOLIDs_LIST/DEGs_PI_SOLIDs-", module, ".txt", sep="");
+write.table(as.data.frame(modLLIDs_PI_DEGs_SOLIDs), file = fileName,
+row.names = FALSE, col.names = FALSE, quote=FALSE)
+}
+# As background in the enrichment analysis, we will use all probes in the analysis.
+fileName = paste("MODULE_SOLIDs_LIST/DEGs_PI_SOLIDs-all.txt", sep="");
+write.table(as.data.frame(allLLIDs_AS_PI_DEGs_SOLIDs), file = fileName,
+row.names = FALSE, col.names = FALSE, quote=FALSE)
+##################################################################################################################################
+
+#Fetch the complete network of AS and PI / NETWORK VISUALISATION####################################################################################################################################
+#cyt_whole_AS_DEGs_nw = exportNetworkToCytoscape(adjacency_AS_DEGs_nw,edgeFile = paste("CytoscapeInput-edges_0.90-", paste("AS_DEGs_nw", collapse=""), ".txt", sep=""),nodeFile = paste("CytoscapeInput-nodes_0.90-", paste("AS_DEGs_nw", collapse="-"), ".txt", sep=""),weighted = TRUE,threshold = 0.9) ##25493 interactions
+
+#cyt_whole_AS_DEGs_nw = exportNetworkToCytoscape(adjacency_AS_DEGs_nw,edgeFile = paste("CytoscapeInput-edges_0.95-", paste("AS_DEGs_nw", collapse=""), ".txt", sep=""),nodeFile = paste("CytoscapeInput-nodes_0.95-", paste("AS_DEGs_nw", collapse="-"), ".txt", sep=""),weighted = TRUE,threshold = 0.95)
+system("mkdir CYRTOSCAPE_FILES_TOM_AS_PI")
+cyt_whole_AS_DEGs = exportNetworkToCytoscape(adjacency_AS_DEGs,edgeFile = paste("CYRTOSCAPE_FILES_TOM_AS_PI/CytoscapeInput-edges_nw-", paste("AS_DEGs_nw", collapse=""), ".txt", sep=""),nodeFile = paste("CYRTOSCAPE_FILES_TOM_AS_PI/CytoscapeInput-nodes_nw-", paste("AS_DEGs_nw", collapse="-"), ".txt", sep=""),weighted = TRUE,threshold = 0.02)
+
+
+cyt_whole_PI_DEGs = exportNetworkToCytoscape(adjacency_PI_DEGs,edgeFile = paste("CYRTOSCAPE_FILES_TOM_AS_PI/CytoscapeInput-edges-", paste("PI_DEGs_nw", collapse=""), ".txt", sep=""),nodeFile = paste("CYRTOSCAPE_FILES_TOM_AS_PI/CytoscapeInput-nodes", paste("PI_DEGs_nw", collapse="-"), ".txt", sep=""),weighted = TRUE,threshold = 0.008)
+
+##Export cytoscape file for all modules inloop################################################################################################################################################
+
+NW_DATA_DEGs<-as.data.frame(t(COMM_DEGs_TOM_AS_PI))  ####https://www.biostars.org/p/286774/  ##What is the meaning of "weight" in the WGCNA Cytoscape edge output file? 
+dim(NW_DATA_DEGs)
+#[1]  14 765
+
+TOMMY = TOMsimilarityFromExpr(NW_DATA_DEGs, power = 12, networkType = "signed", TOMType = "signed"); #power = 12 =beta  as used default beta for signed network
+
+
+##For Alternaria solani
+table(modules_AS_DEGs)   ##Modules are acc. to this and 13 in numbers
+#modules_AS_DEGs
+  #   blue turquoise 
+   #   271       49
+
+for (MOD in colors_AS_DEGs[colors_AS_DEGs!="grey"])
+{
+II<-names(NW_DATA_DEGs) #probe names (1625)
+inModule_AS_nw = is.finite(match(modules_AS_DEGs, MOD))
+modProbes_AS_nw = II[inModule_AS_nw]; 
+length(modProbes_AS_nw) #299 in SOL IDs
+modTOM_AS_nw = TOMMY[inModule_AS_nw, inModule_AS_nw];
+dimnames(modTOM_AS_nw) = list(modProbes_AS_nw, modProbes_AS_nw) 
+dimnames(modTOM_AS_nw) #299
+cyt_AS = exportNetworkToCytoscape(modTOM_AS_nw,edgeFile = paste("CYRTOSCAPE_FILES_TOM_AS_PI/CytoscapeInput_AS-edges-", paste(MOD, collapse="-"), ".txt", sep=""),nodeFile = paste("CYRTOSCAPE_FILES_TOM_AS_PI/CytoscapeInput_AS-nodes-", paste(MOD, collapse="-"), ".txt", sep=""),weighted = TRUE,threshold = 0.002,nodeNames = modProbes_AS_nw, nodeAttr = modules_AS_DEGs[inModule_AS_nw])
+}
+
+##For Phytophthora infestans
+table(modules_PI_DEGs) ##Modules are acc. to this and 13 in numbers
+#modules_PI_DEGs
+  #   blue     brown     green      grey turquoise    yellow 
+ #     136       112        61        23       348        85 
+
+for (MOD in colors_PI_DEGs[colors_PI_DEGs!="grey"])
+{
+II<-names(NW_DATA_DEGs) #probe names (1625)
+inModule_PI_nw = is.finite(match(modules_PI_DEGs, MOD))
+modProbes_PI_nw = II[inModule_PI_nw]; 
+length(modProbes_PI_nw) #299 in SOL IDs
+modTOM_PI_nw = TOMMY[inModule_PI_nw, inModule_PI_nw];
+dimnames(modTOM_PI_nw) = list(modProbes_PI_nw, modProbes_PI_nw) 
+dimnames(modTOM_PI_nw) #299
+cyt_PI = exportNetworkToCytoscape(modTOM_PI_nw,edgeFile = paste("CYRTOSCAPE_FILES_TOM_AS_PI/CytoscapeInput_PI-edges-", paste(MOD, collapse="-"), ".txt", sep=""),nodeFile = paste("CYRTOSCAPE_FILES_TOM_AS_PI/CytoscapeInput_PI-nodes-", paste(MOD, collapse="-"), ".txt", sep=""),weighted = TRUE,threshold = 0.002,nodeNames = modProbes_PI_nw, nodeAttr = modules_PI_DEGs[inModule_PI_nw])
+}
+
+###########################################################################################################################################
+
+#a. download tehe CDs fasta entitled as "ITAG3.2_CDS.fasta " from following linlk: ftp://ftp.solgenomics.net/tomato_genome/annotation/ITAG3.2_release/ and copy in  the folder "BLAST_DEGs_TF"
+#b. convert it into singline sequence for this run following command 
+perl singleline.pl ITAG3.2_CDS.fasta >ITAG3.2_CDS_nw.fasta
+#c.Toget fasta file with short header removeevery thing after dot.
+sed 's/[.].*$//g' ITAG3.2_CDS_nw.fasta >FINAL_CDs_SOLIDs.fasta
+#c.copy complete name list of DEGs "Complete_DEGs_SOLIDs-all.txt" to folder "BLAST_DEGs_TF" and run following command to fecth sequence for DEGs only:
+perl -ne 'if(/^>(\S+)/){$c=$i{$1}}$c?print:chomp;$i{$_}=1 if @ARGV' Complete_DEGs_SOLIDs-all.txt FINAL_CDs_SOLIDs.fasta >FINAL_DEGS_SOLIDS_SEQ_765.fasta
+#d. Now we have to identfy TFs from these 765 DEGS, for this download pep sequence of TFs from PlnTFDB database "PlnTFDB_PEP_729408501.fasta"  and copy to folder "BLAST_DEGs_TF" and then run foollowing commands:
+makeblastdb -in PlnTFDB_PEP_729408501.fasta -dbtype prot -out PlnTFDB_PEP_nw.fasta 
+blastx -query FINAL_DEGS_SOLIDS_SEQ_765.fasta -task blastx -db PlnTFDB_PEP_nw.fasta -evalue 0.001 -out BLAST_TF_TOM_FINAL -num_threads 2 
+#e.##Fetch tophit from the blast output:
+perl top_hit.pl BLAST_TF_TOM_FINAL >FINAL_BLAST_TF_TOM_FINAL              #A total of 209 hits were obtained
+#f. for enrichment analysis ATIDS for SOLIDs are required their for downlaod PEP sequence for A. thaliana is downloaded from TAIR as "TAIR10_pep_20101214.fasta"
+makeblastdb -in TAIR10_pep_20101214.fasta -dbtype prot -out TAIR10_pep_20101214_nw.fasta 
+#Building a new DB, current time: 04/26/2019 17:21:33
+#New DB name:   /home/shivalika/Documents/EXPERIMENT_1/FINAL_DATA_TOM_PI_AS/MERGE_TOM_DATA/WGCNA_analysis_APR19/BLAST_DEGs_TF/TAIR10_pep_20101214_nw.fasta
+#New DB title:  TAIR10_pep_20101214.fasta
+#Sequence type: Protein
+#Keep Linkouts: T
+#Keep MBits: T
+#Maximum file size: 1000000000B
+#Adding sequences from FASTA; added 35386 sequences in 1.24829 seconds.
+blastx -query FINAL_DEGS_SOLIDS_SEQ_765.fasta -task blastx -db TAIR10_pep_20101214.fasta -evalue 0.001 -out BLAST_TOM_TAIR -num_threads 2 
+perl top_hit.pl BLAST_TOM_TAIR >FINAL_BLAST_TOM_TAIR_FINAL              #A total of 756 and 10 were not have any corresponding ATID hits were obtained
+
+awk -F"\t " '{print $1"\t"$2}' FINAL_BLAST_TOM_TAIR_FINAL | awk -F"|" '{print $1}' >FINAL_SOLIDs_ATIDs_756_withdot.txt
+awk -F"\t " '{print $1"\t"$2}' FINAL_BLAST_TOM_TAIR_FINAL | awk -F"|" '{print $1}' | awk -F"." '{print $1}' >FINAL_SOLIDs_ATIDs_756.txt
+
+#Copy "FINAL_SOLIDs_ATIDs_756.txt" file to folder MODULE_SOLIDs_LIST to fetch ATIDs for corresponding solids for each module and run following code:
+ls DEGs_* >shiv
+###### fetch only ATIDs
+sh fetch_ATIDs.sh
+#!/bin/bash
+while read i
+do
+echo $i
+#cd $i
+#for file in *_ver_2
+#do 
+#awk -F"\t" 'FNR==NR{a[$2];next}($1 in a) {print $1"\t"$2}' $i ANNOTATOR_bio_process_final >FINAL_awk_BP_$i
+awk 'NR==FNR{a[$1]= $2; next} ($1 in a) {print a[$1]}' FINAL_SOLIDs_ATIDs_756.txt $i >ATIDs_$i.xt
+#awk '$2 != "-" {print $0}' awk_BP_$i | sort -u -k 1 | uniq -u >FINAL_awk_BP_$i
+#done
+#cd ..
+done < "shiv"
+echo $i "DONE"
+##### fetch both ATIDs and SOLIDs
+sh fecth_ATIDs_SOLIDs.sh
+#!/bin/bash
+while read i
+do
+echo $i
+#cd $i
+#for file in *_ver_2
+#do 
+#awk -F"\t" 'FNR==NR{a[$2];next}($1 in a) {print $1"\t"$2}' $i ANNOTATOR_bio_process_final >FINAL_awk_BP_$i
+awk 'NR==FNR{a[$1]= $2; next} ($1 in a) {print $1"\t"a[$1]}' FINAL_SOLIDs_ATIDs_756.txt $i >ATIDs_SOLIDs_$i.xt
+#awk '$2 != "-" {print $0}' awk_BP_$i | sort -u -k 1 | uniq -u >FINAL_awk_BP_$i
+#done
+#cd ..
+done < "shiv"
+echo $i "DONE"
+
+replate "\t\t" with "\t"
+awk -F"\t" '$1~/^SGN/ && $7~/!^NCBI_gi/ {print $0}' sgn_valid.gaf >SOL_gaf_without_NCBI_gi.txt
+
+ awk -F"\t" '$1~/^SGN/ && $7~/^[NCBI_gi]/ {print $0}' sgn_valid.gaf >SOL_gaf_without_NCBI_gi.txt 
+awk -F"\t\t" '$1~/^SGN/ {print $2"\t"$3}' sgn_valid.gaf | awk -F"\t" '{print $1"\t"$6}' >SOL_NCBI_gi.txt 
+
+awk -F"\t" '$2!~/^NA/ {print $2"\t"$1}' SOL_NCBI_gi.txt | sort >GO_complete_SOL.txt
+awk -F"\t" '$2!~/^NA/ {print $0}' SOL_NCBI_gi.txt | wc
+  # 1300    2600   33800
+
+#manually remove extra gene  ids.
+###fetch the GO for given ids
+awk 'NR==FNR{a[$1]=$2; next} ($1 in a) {print $0}' DEGs_AS_SOLIDs-all.txt GO_complete_SOL.txt | wc
+  #   41      82    1066
+awk 'NR==FNR{a[$1]=$2; next} ($1 in a) {print $0}' DEGs_AS_SOLIDs-all.txt GO_complete_SOL.txt >DEGs_AS_all_GO_41.txt
+
+##Download complete GO for TOM from agriGO and named as "agriGO_SOL.txt"
+#prepare file using following command:
+ awk -F"\t" '{print $3"\t"$2}' agriGO_SOL.txt | awk -F"." '{print $1}' | awk -F"\t" '{print $2"\t"$1}' >Final_agrigo_SOL.txt
+
+awk -F"\t" '{print $3"\t"$2}' agriGO_SOL.txt | awk -F"." '{print $1}' | awk -F"\t" '{print $2"\t"$1}' | wc
+#  44280   88560 1151280
+awk 'NR==FNR{a[$1]=$2; next} ($1 in a) {print $0}' DEGs_AS_SOLIDs-all.txt Final_agrigo_SOL.txt >DEGs_TOM_agriGO_1328.txt     #1328
+awk 'NR==FNR{a[$1]=$2; b[$1]=$3; next} ($1 in a) {print a[$1]"\t"$1}' Final_agrigo_SOL.txt DEGs_AS_SOLIDs-all.txt #518
+#awk -F"\t" '$2!~/\./ {print $2"\t"$3}' hh.txt >NEW_FINAL_TOM_agrigo.txt
+
+awk 'NR==FNR{a[$1]=$2; next} ($1 in a) {print $0}' DEGs_AS_SOLIDs-all.txt NEW_FINAL_TOM_agrigo.txt >NEW_DEGs_TOM_agriGO_772.txt     #772
+
+#@@@DEGs_TOM_agriGO_1328.txt will be used as background file to perform SOLIDs enrichment
+
+sh fecth_GO_SOLIDs.sh
+#!/bin/bash
+while read i
+do
+echo $i
+#cd $i
+#for file in *_ver_2
+#do 
+#awk -F"\t" 'FNR==NR{a[$2];next}($1 in a) {print $1"\t"$2}' $i ANNOTATOR_bio_process_final >FINAL_awk_BP_$i
+awk 'NR==FNR{a[$1]=$2; next} ($1 in a) {print $0}' $i DEGs_TOM_agriGO_1328.txt >GO_$i
+#awk '$2 != "-" {print $0}' awk_BP_$i | sort -u -k 1 | uniq -u >FINAL_awk_BP_$i
+#done
+#cd ..
+done < "shiv"
+echo $i "DONE"
+
+####################GO ANNOTATION OF KEY MODULES##############################################################################################################
+#GO_TOMATO_all.txt downloaded from agriGO 
+ #download  sgn_valid.gaf  file from following link to get the GO_term fol SolIDs http://current.geneontology.org/products/annotations/index.html
+system("awk -F\"\t\" '{print $2\"\t\"$3}' GO_TOMATO_all.txt >GO_Tomato_complete.txt")
+#print last cloumn of file
+#awk -F\"\t\" '{print $NF}' >out")
+
+system("awk 'NR==FNR{a[$1]=$2; next} ($1 in a) {print $1\"\t\"a[$1]}' GO_Tomato_complete.txt DEGs_PI_SOLIDs-all.txt  >GO_DEGs_TOMATO_398.txt")
+system("grep -c \"\" GO_DEGs_TOMATO_398.txt")
+#398 (506-398=108 enteries do not have any GO)
+system("awk 'NR==FNR{a[$1]=$2; next} ($1 in a) {print $1\"\t\"a[$1]}' DEGs_PI_SOLIDs-all.txt GO_Tomato_complete.txt  >GO_DEGs_TOMATO_518.txt")
+system("grep -c \"\" GO_DEGs_TOMATO_518.txt")
+#518
+system("awk -F\"\t\" '{print $1}' GO_DEGs_TOMATO_518.txt | sort | uniq --count >duplicate_DEGs_518.txt")
+system("sudo chmod 777 -R /home/shivalika/Documents/EXPERIMENT_1/TOMATO_PINFESTANS/MERGE_TOMATO_PI_DATA")
+
+
+########Pathway analysis OF KEY MODULES
+library("GOstats")
+library("RColorBrewer")
+library("Rgraphviz")
+library("org.At.tair.db")
+library("plyr")
+library("pathview")
+
+library(org.At.tair.db)
+
+data(bods)
+ bods
+
+
+# if (!requireNamespace("BiocManager", quietly=TRUE))    
+ # install.packages("BiocManager") 
+#BiocManager::install(c("Rgraphviz", "png", "KEGGgraph", "org.At.tair.db"))
+
+data(bods)
+bods
+     # package             species               kegg code id.type
+ #[1,] "org.Ag.eg.db"      "Anopheles"           "aga"     "eg"   
+ #[2,] "org.At.tair.db"    "Arabidopsis"         "ath"     "tair" 
+ #[3,] "org.Bt.eg.db"      "Bovine"              "bta"     "eg"   
+ #[4,] "org.Ce.eg.db"      "Worm"                "cel"     "eg"   
+ #[5,] "org.Cf.eg.db"      "Canine"              "cfa"     "eg"   
+ #[6,] "org.Dm.eg.db"      "Fly"                 "dme"     "eg"   
+ #[7,] "org.Dr.eg.db"      "Zebrafish"           "dre"     "eg"   
+ #[8,] "org.EcK12.eg.db"   "E coli strain K12"   "eco"     "eg"   
+ #[9,] "org.EcSakai.eg.db" "E coli strain Sakai" "ecs"     "eg"   
+#[10,] "org.Gg.eg.db"      "Chicken"             "gga"     "eg"   
+#[11,] "org.Hs.eg.db"      "Human"               "hsa"     "eg"   
+#[12,] "org.Mm.eg.db"      "Mouse"               "mmu"     "eg"   
+#[13,] "org.Mmu.eg.db"     "Rhesus"              "mcc"     "eg"   
+#[14,] "org.Pf.plasmo.db"  "Malaria"             "pfa"     "orf"  
+#[15,] "org.Pt.eg.db"      "Chimp"               "ptr"     "eg"   
+#[16,] "org.Rn.eg.db"      "Rat"                 "rno"     "eg"   
+#[17,] "org.Sc.sgd.db"     "Yeast"               "sce"     "orf"  
+#[18,] "org.Ss.eg.db"      "Pig"                 "ssc"     "eg"   
+#[19,] "org.Xl.eg.db"      "Xenopus"             "xla"     "eg" 
+data(gene.idtype.list)
+gene.idtype.list
+ #[1] "SYMBOL"       "GENENAME"     "ENSEMBL"      "ENSEMBLPROT"  "UNIGENE"     
+# [6] "UNIPROT"      "ACCNUM"       "ENSEMBLTRANS" "REFSEQ"       "ENZYME"      
+#[11] "TAIR"         "PROSITE"      "ORF"
+      
+data(demo.paths)
+demo.paths
+#$sel.paths
+#[1] "04110" "00620" "00640"
+#$kpos1
+#[1] "topright"    "bottomright" "topright"   
+#$kpos2
+#[1] "topright"    "topright"    "bottomright"
+#$spos
+#[1] "bottomleft" "bottomleft" "topright"  
+#$offs
+#[1] -1.0 -1.0 -0.8
+
+gdata.osa=sim.mol.data(mol.type="gene", species ="osa", id.type="kegg", nmol=10000) pv.out=pathview(gene.data = gdata.osa, pathway.id = "00195", gene.idtype = "KEGG", species = "Oryza sativa japonica")
+
+
+
+library("pathview")
+geneList<-readLines("ATIDs_DEGs_AS_SOLIDs-turquoise.txt") 
+pathway_ids <- c("04626", "00592", "04075", "04144", "04141", "00040", "00270", "04070")
+pathway <- pathview(gene.data  = geneList, pathway.id = "04626", gene.idtype = "KEGG", species = "ath")
+
+
+
+#For al pathways  #https://gist.github.com/slavailn/3c76d5a4b4dbcac248c0044a24b7c925
+#https://bioconductor.org/packages/release/bioc/vignettes/pathview/inst/doc/pathview.pdf
+sapply(pathway_ids, function(pid) pathview(gene.data = geneList, 
+                                           pathway.id = pid, 
+                                           species = "ath",
+                                           kegg.native=T, 
+                                           sign.pos="bottomleft",
+                                           gene.annotpkg="org.At.tair.db",
+                                           out.suffix = pid,
+gene.idtype = "KEGG"))
+
+
+geneList<-readLines("ATIDs_DEGs_PI_SOLIDs-turquoise.txt") 
+pathway_ids <- c("04626", "00592", "04075", "04144", "04141", "00040", "00270", "04070")
+sapply(pathway_ids, function(pid) pathview(gene.data = geneList, 
+                                           pathway.id = pid, 
+                                           species = "ath",
+                                           kegg.native=T, 
+                                           sign.pos="bottomleft",
+                                           gene.annotpkg="org.At.tair.db",
+                                           out.suffix = pid,
+gene.idtype = "KEGG"))
+
+
+
+geneList<-readLines("ATIDs_DEGs_PI_SOLIDs-blue.txt") 
+pathway_ids <- c("04626", "00592", "04075", "04144", "04141", "00040", "00270", "04070")
+sapply(pathway_ids, function(pid) pathview(gene.data = geneList, 
+                                           pathway.id = pid, 
+                                           species = "ath",
+                                           kegg.native=T, 
+                                           sign.pos="bottomleft",
+                                           gene.annotpkg="org.At.tair.db",
+                                           out.suffix = pid,
+gene.idtype = "KEGG"))
+
+
+geneList<-readLines("ATIDs_DEGs_AS_SOLIDs-blue.txt") 
+pathway_ids <- c("04626", "00592", "04075", "04144", "04141", "00040", "00270", "04070")
+sapply(pathway_ids, function(pid) pathview(gene.data = geneList, 
+                                           pathway.id = pid, 
+                                           species = "ath",
+                                           kegg.native=F, 
+                                           sign.pos="bottomleft",
+                                           gene.annotpkg="org.At.tair.db",
+                                           out.suffix = pid,
+gene.idtype = "KEGG"))
+
+
+geneList<-readLines("ATIDs_DEGs_PI_SOLIDs-green.txt") 
+pathway_ids <- c("04626", "00592", "04075", "04144", "04141", "00040", "00270", "04070")
+sapply(pathway_ids, function(pid) pathview(gene.data = geneList, 
+                                           pathway.id = pid, 
+                                           species = "ath",
+                                           kegg.native=T, 
+                                           sign.pos="bottomleft",
+                                           gene.annotpkg="org.At.tair.db",
+                                           out.suffix = pid,
+gene.idtype = "KEGG"))
+
+
+#graphviz viewAT4G08170
+geneList<-readLines("ATIDs_DEGs_PI_SOLIDs-green.txt") 
+pathway_ids <- c("04626", "00592", "04075", "04144", "04141", "00040", "00270", "04070")
+sapply(pathway_ids, function(pid) pathview(gene.data = geneList, 
+                                           pathway.id = pid, 
+                                           species = "ath",
+                                           kegg.native=F, 
+                                           sign.pos="bottomleft",
+                                           gene.annotpkg="org.At.tair.db",
+                                           out.suffix = pid,
+gene.idtype = "KEGG"))
+
+
+> #KEGG view with data match of complete DEGs
+
+#graphviz viewAT4G08170
+geneList<-readLines("ATIDs_DEGs_AS_SOLIDs-all.txt") 
+pathway_ids <- c("04626", "00592", "04075", "04144", "04141", "00040", "00270", "04070")
+sapply(pathway_ids, function(pid) pathview(gene.data = geneList, 
+                                           pathway.id = pid, 
+                                           species = "ath",
+                                           kegg.native=F, 
+                                           sign.pos="bottomleft",
+                                           gene.annotpkg="org.At.tair.db",
+                                           out.suffix = pid,
+gene.idtype = "KEGG"))
+#KEGG view viewAT4G08170
+geneList<-readLines("ATIDs_DEGs_AS_SOLIDs-all.txt") 
+pathway_ids <- c("04626", "00592", "04075", "04144", "04141", "00040", "00270", "04070")
+sapply(pathway_ids, function(pid) pathview(gene.data = geneList, 
+                                           pathway.id = pid, 
+                                           species = "ath",
+                                           kegg.native=T, 
+                                           sign.pos="bottomleft",
+                                           gene.annotpkg="org.At.tair.db",
+                                           out.suffix = pid,
+gene.idtype = "KEGG"))
+
+###########COMPARISION OF ROBUSTNESS OF BOTH DISEASE NETWORKS analysis############################################
+
+AS.data <- read.table("FINAL_AS_CYTOSCAPE_FILE.txt", header=F, sep="\t")
+AS.graph <- graph.data.frame(d = AS.data, directed = FALSE)
+write.graph(graph = AS.graph, file = 'DEGs_AS_complete_network.gml', format = 'gml')
+system("sed 's/name/label/g' DEGs_AS_complete_network.gml >FINAL_AS-complete.gml")
+
+PI.data <- read.table("FINAL_PI_CYTOSCAPE_FILE.txt", header=F, sep="\t")
+PI.graph <- graph.data.frame(d = PI.data, directed = FALSE)
+write.graph(graph = PI.graph, file = 'DEGs_PI_complete_network.gml', format = 'gml')
+system("sed 's/name/label/g' DEGs_PI_complete_network.gml >FINAL_PI-complete.gml")
+
+AS_turquoise.data <- read.table("FINAL_AS_CYTOSCAPE_turquoise_MOD.txt", header=F, sep="\t")
+AS_turquoise.graph <- graph.data.frame(d = AS_turquoise.data, directed = FALSE)
+write.graph(graph = AS_turquoise.graph, file = 'DEGs_AS_turquoise_network.gml', format = 'gml')
+system("sed 's/name/label/g' DEGs_AS_turquoise_network.gml >FINAL_AS-turquoise.gml")
+
+AS_blue.data <- read.table("FINAL_AS_CYTOSCAPE_blue_MOD.txt", header=F, sep="\t")
+AS_blue.graph <- graph.data.frame(d = AS_blue.data, directed = FALSE)
+write.graph(graph = AS_blue.graph, file = 'DEGs_AS_blue_network.gml', format = 'gml')
+system("sed 's/name/label/g' DEGs_AS_blue_network.gml >FINAL_AS-blue.gml")
+
+
+
+PI_turquoise.data <- read.table("FINAL_PI_CYTOSCAPE_turquoise_MOD.txt", header=F, sep="\t")
+PI_turquoise.graph <- graph.data.frame(d = PI_turquoise.data, directed = FALSE)
+write.graph(graph = PI_turquoise.graph, file = 'DEGs_PI_turquoise_network.gml', format = 'gml')
+system("sed 's/name/label/g' DEGs_PI_turquoise_network.gml >FINAL_PI-turquoise.gml")
+
+PI_blue.data <- read.table("FINAL_PI_CYTOSCAPE_blue_MOD.txt", header=F, sep="\t")
+PI_blue.graph <- graph.data.frame(d = PI_blue.data, directed = FALSE)
+write.graph(graph = PI_blue.graph, file = 'DEGs_PI_blue_network.gml', format = 'gml')
+system("sed 's/name/label/g' DEGs_PI_blue_network.gml >FINAL_PI-blue.gml")
+
+PI_green.data <- read.table("FINAL_PI_CYTOSCAPE_green_MOD.txt", header=F, sep="\t")
+PI_green.graph <- graph.data.frame(d = PI_green.data, directed = FALSE)
+write.graph(graph = PI_green.graph, file = 'DEGs_PI_green_network.gml', format = 'gml')
+system("sed 's/name/label/g' DEGs_PI_green_network.gml >FINAL_PI-green.gml")
+
+
+
+system("awk -F\"\t\" '$1 ~/^Soly/ {print $1\"\t\"$2}' CytoscapeInput-edges-AS_DEGs_nw.txt >FINAL_AS_CYTOSCAPE_FILE.txt")
+system("awk -F\"\t\" '$1 ~/^Soly/ {print $1\"\t\"$2}' CytoscapeInput-edges-PI_DEGs_nw.txt >FINAL_PI_CYTOSCAPE_FILE.txt")
+system("awk -F\"\t\" '$1 ~/^Soly/ {print $1\"\t\"$2}' CytoscapeInput_AS-edges-turquoise.txt >FINAL_AS_CYTOSCAPE_turquoise_MOD.txt")
+system("awk -F\"\t\" '$1 ~/^Soly/ {print $1\"\t\"$2}' CytoscapeInput_AS-edges-blue.txt >FINAL_AS_CYTOSCAPE_blue_MOD.txt")
+system("awk -F\"\t\" '$1 ~/^Soly/ {print $1\"\t\"$2}' CytoscapeInput_PI-edges-turquoise.txt >FINAL_PI_CYTOSCAPE_turquoise_MOD.txt")
+system("awk -F\"\t\" '$1 ~/^Soly/ {print $1\"\t\"$2}' CytoscapeInput_PI-edges-blue.txt >FINAL_PI_CYTOSCAPE_blue_MOD.txt")
+system("awk -F\"\t\" '$1 ~/^Soly/ {print $1\"\t\"$2}' CytoscapeInput_PI-edges-green.txt >FINAL_PI_CYTOSCAPE_green_MOD.txt")
+
+
+python robustness_PNG.py FINAL_AS-blue.gml FINAL.png True   #CODE IS GIVEN IN https://github.com/ShivalikaP  "node_deletion_studies"
+0.00185863482251 0.00184501845018 0.00184501845018 0.00184501845018 0.00184501845018
+python robustness_PNG.py FINAL_PI-green.gml FINAL_PI-green.png True
+0.00846546627251 0.00819672131148 0.00819672131148 0.00819672131148 0.00819672131148
+
+########
